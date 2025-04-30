@@ -961,39 +961,55 @@
         async function loadDefaultExcelFile() {
             try {
                 // Path to your Excel file - update this to your actual filename
-                const excelFilePath = '/arabic-vocab-app/vocabulary.xlsx';
-                
+                const excelFilePath = 'vocabulary.xlsx';
+        
                 dataInfo.textContent = 'טוען נתונים...';
                 statusIndicator.className = 'status-indicator loading';
-                
+        
+                console.log('Attempting to fetch Excel file from:', excelFilePath);
+        
                 // Fetch the Excel file
                 const response = await fetch(excelFilePath);
                 if (!response.ok) {
                     throw new Error(`נכשלה טעינת הקובץ: ${response.status} ${response.statusText}`);
                 }
-                
+        
+                console.log('File fetched successfully, converting to ArrayBuffer');
+        
                 // Convert the response to an ArrayBuffer
                 const data = await response.arrayBuffer();
-                
+        
+                console.log('Processing Excel data');
+        
                 // Process the Excel data
                 const workbook = XLSX.read(new Uint8Array(data), {type: 'array'});
-                
+        
                 // Get all sheet names
                 const sheetNames = workbook.SheetNames;
-                
+                console.log('All sheet names:', sheetNames);
+        
                 // Filter sheets to only those containing 'P'
                 const filteredSheetNames = sheetNames.filter(sheetName => sheetName.includes('P'));
-                
+                console.log('Filtered sheet names (with P):', filteredSheetNames);
+        
+                // If no sheets contain 'P', show a warning but proceed with all sheets
+                if (filteredSheetNames.length === 0) {
+                    console.warn('No sheets containing "P" were found. Using all sheets instead.');
+                    processAllSheets(workbook, sheetNames);
+                    return;
+                }
+        
                 let allData = [];
                 sheetData = {}; // Reset sheet data
-                
+        
                 // Process each filtered sheet
                 filteredSheetNames.forEach(sheetName => {
                     const worksheet = workbook.Sheets[sheetName];
-                    
+            
                     // Convert to JSON
                     const jsonData = XLSX.utils.sheet_to_json(worksheet);
-                    
+                    console.log(`Sheet ${sheetName} has ${jsonData.length} entries`);
+            
                     // Create display name by removing 'P' and any characters before it
                     let displayName = sheetName;
                     if (sheetName.includes('P')) {
@@ -1002,26 +1018,28 @@
                         // Remove any leading non-alphanumeric characters
                         displayName = displayName.replace(/^[^a-zA-Z0-9]+/, '');
                     }
-                    
+                    console.log(`Display name for ${sheetName} is ${displayName}`);
+            
                     // Store data by sheet name
                     sheetData[sheetName] = jsonData;
-                    
+            
                     // Add modified sheet name as category if not specified
                     jsonData.forEach(item => {
                         if (!item.category && !item.Category) {
                             item.sheetCategory = displayName; // Use the name without 'P'
                         }
                     });
-                    
+            
                     allData = [...allData, ...jsonData];
                 });
-                
+        
+                console.log(`Total data entries: ${allData.length}`);
                 processVocabularyData(allData);
-                
+        
                 // Update status to success
                 statusIndicator.className = 'status-indicator success';
                 dataInfo.textContent = `נטענו ${allData.length} מילים בהצלחה`;
-                
+        
                 // Get display names for the badges (without 'P')
                 const displayNames = filteredSheetNames.map(sheetName => {
                     if (sheetName.includes('P')) {
@@ -1032,7 +1050,7 @@
                     }
                     return sheetName;
                 });
-                
+        
                 // Create a detailed sheet information display with modified names
                 sheetsInfo.innerHTML = `
                     <div>נטענו נתונים מ-${filteredSheetNames.length} גיליונות:</div>
@@ -1046,6 +1064,48 @@
                 dataInfo.textContent = `שגיאה בטעינת קובץ ברירת המחדל: ${error.message}`;
                 sheetsInfo.innerHTML = '';
             }
+        }
+
+        // Fallback function if no sheets with 'P' are found
+        function processAllSheets(workbook, sheetNames) {
+            let allData = [];
+            sheetData = {}; // Reset sheet data
+    
+            // Process each sheet
+            sheetNames.forEach(sheetName => {
+                const worksheet = workbook.Sheets[sheetName];
+        
+                // Convert to JSON
+                const jsonData = XLSX.utils.sheet_to_json(worksheet);
+                console.log(`Sheet ${sheetName} has ${jsonData.length} entries`);
+        
+                // Store data by sheet name
+                sheetData[sheetName] = jsonData;
+        
+                // Add sheet name as category if not specified
+                jsonData.forEach(item => {
+                    if (!item.category && !item.Category) {
+                        item.sheetCategory = sheetName;
+                    }
+                });
+        
+                allData = [...allData, ...jsonData];
+            });
+    
+            console.log(`Total data entries: ${allData.length}`);
+            processVocabularyData(allData);
+    
+            // Update status to success
+            statusIndicator.className = 'status-indicator success';
+            dataInfo.textContent = `נטענו ${allData.length} מילים בהצלחה (כל הגליונות)`;
+    
+            // Create a detailed sheet information display
+            sheetsInfo.innerHTML = `
+                <div>נטענו נתונים מ-${sheetNames.length} גיליונות:</div>
+                <div class="sheet-list">
+                    ${sheetNames.map(sheet => `<span class="sheet-badge">${sheet}</span>`).join('')}
+                </div>
+            `;
         }
 
         // Load data automatically when the page loads
