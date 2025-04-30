@@ -1659,13 +1659,47 @@
             updateSRSStats();
         }
 
-        // Load data automatically when the page loads
+        // Load data and set up buttons
         document.addEventListener('DOMContentLoaded', function() {
             console.log("DOM loaded, initializing app");
+            
+            // Set up button click handlers
+            flashcard.onclick = flipCard;
+            flipButton.onclick = flipCard;
+            prevButton.onclick = showPreviousCard;
+            nextButton.onclick = showNextCard;
+            
+            // Load data
             loadDefaultExcelFile();
             
-            // Initialize SRS after a short delay to ensure DOM elements are ready
-            setTimeout(initializeSRS, 1000);
+            // Initialize SRS after a short delay
+            setTimeout(function() {
+                initializeSRS();
+                
+                // Set up SRS button click handlers
+                if (studyModeButton) studyModeButton.onclick = disableReviewMode;
+                if (reviewModeButton) reviewModeButton.onclick = enableReviewMode;
+                
+                if (easyButton) {
+                    easyButton.onclick = function() {
+                        if (currentWords.length === 0) return;
+                        const currentWord = currentWords[currentIndex];
+                        updateSRS(currentWord.id, true);
+                        updateWordSRSDisplay(currentWord.id);
+                        showNextCard();
+                    };
+                }
+                
+                if (hardButton) {
+                    hardButton.onclick = function() {
+                        if (currentWords.length === 0) return;
+                        const currentWord = currentWords[currentIndex];
+                        updateSRS(currentWord.id, false);
+                        updateWordSRSDisplay(currentWord.id);
+                        showNextCard();
+                    };
+                }
+            }, 1000);
         });
     </script>
 </body>
