@@ -920,7 +920,7 @@ function updateStats() {
 async function loadDefaultExcelFile() {
     try {
         // Path to your Excel file - update this to your actual filename
-        const excelFilePath = 'vocabulary.xlsx';
+        const excelFilePath = '/arabic-vocab-app/vocabulary.xlsx';
         
         dataInfo.textContent = 'טוען נתונים...';
         statusIndicator.className = 'status-indicator loading';
