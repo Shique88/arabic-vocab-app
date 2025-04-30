@@ -142,7 +142,7 @@
             min-width: 100px;
         }
         .progress-container {
-            margin: 20px 0;
+            margin-top: 20px;
         }
         progress {
             width: 100%;
@@ -176,6 +176,179 @@
             0% { opacity: 0.5; }
             50% { opacity: 1; }
             100% { opacity: 0.5; }
+        }
+
+        /* Authentication styles */
+        .user-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .auth-buttons {
+            display: flex;
+            gap: 10px;
+        }
+
+        .auth-button {
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9em;
+        }
+
+        #login-button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+        }
+
+        #login-button:hover {
+            background-color: #2980b9;
+        }
+
+        #register-button {
+            background-color: white;
+            color: #3498db;
+            border: 1px solid #3498db;
+        }
+
+        #register-button:hover {
+            background-color: #f8f9fa;
+        }
+
+        #logout-button {
+            background-color: #e74c3c;
+            color: white;
+            border: none;
+        }
+
+        #logout-button:hover {
+            background-color: #c0392b;
+        }
+
+        .progress-sync {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #e8f7f0;
+            border-radius: 5px;
+            border-right: 4px solid #2ecc71;
+            color: #27ae60;
+        }
+
+        .anonymous-warning {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #fff8e8;
+            border-radius: 5px;
+            border-right: 4px solid #f39c12;
+            color: #d35400;
+        }
+
+        /* Modal styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 100;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-content {
+            background-color: white;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 400px;
+            padding: 20px;
+            position: relative;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .close-button {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            font-size: 1.5em;
+            cursor: pointer;
+            color: #95a5a6;
+        }
+
+        .auth-tabs {
+            display: flex;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .auth-tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            color: #7f8c8d;
+        }
+
+        .auth-tab.active {
+            color: #3498db;
+            border-bottom: 2px solid #3498db;
+        }
+
+        .auth-form {
+            margin-top: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #bdc3c7;
+            border-radius: 4px;
+            font-size: 1em;
+        }
+
+        .auth-status {
+            margin: 10px 0;
+            padding: 8px;
+            border-radius: 4px;
+            text-align: center;
+        }
+
+        .error-message {
+            background-color: #fdeded;
+            color: #e74c3c;
+            border-right: 3px solid #e74c3c;
+        }
+
+        .success-message {
+            background-color: #edfde8;
+            color: #27ae60;
+            border-right: 3px solid #2ecc71;
+        }
+
+        #auth-container.logged-in .guest-only {
+            display: none;
+        }
+
+        #auth-container:not(.logged-in) .user-only {
+            display: none;
         }
     </style>
 </head>
@@ -241,12 +414,105 @@
                 </div>
             </div>
         </div>
+        
+        <div class="app-section" id="auth-container">
+            <div class="user-header">
+                <h2>המשתמש שלך</h2>
+                <div class="user-info">
+                    <span>שלום, </span>
+                    <span id="user-name">אורח</span>
+                    <div class="auth-buttons">
+                        <button id="login-button" class="auth-button guest-only">התחבר</button>
+                        <button id="register-button" class="auth-button guest-only">הרשם</button>
+                        <button id="logout-button" class="auth-button user-only">התנתק</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="user-only progress-sync">
+                <p>ההתקדמות שלך נשמרת אוטומטית</p>
+            </div>
+            
+            <div class="guest-only anonymous-warning">
+                <p>אתה גולש כאורח. ההתקדמות שלך לא תישמר אם תצא מהעמוד.</p>
+                <button id="guest-login-button" class="primary-btn">התחבר כדי לשמור את ההתקדמות</button>
+            </div>
+        </div>
     </div>
+    
+    <!-- Auth Modal -->
+    <div id="auth-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-button" onclick="hideAuthModal()">&times;</span>
+            
+            <div class="auth-tabs">
+                <div id="login-tab" class="auth-tab active" onclick="switchAuthForm('login')">התחברות</div>
+                <div id="register-tab" class="auth-tab" onclick="switchAuthForm('register')">הרשמה</div>
+            </div>
+            
+            <div id="auth-status" class="auth-status"></div>
+            
+            <div id="login-form" class="auth-form">
+                <div class="form-group">
+                    <label for="login-email">אימייל</label>
+                    <input type="email" id="login-email" required>
+                </div>
+                <div class="form-group">
+                    <label for="login-password">סיסמה</label>
+                    <input type="password" id="login-password" required>
+                </div>
+                <button id="submit-login" class="primary-btn">התחבר</button>
+            </div>
+            
+            <div id="register-form" class="auth-form" style="display: none;">
+                <div class="form-group">
+                    <label for="register-email">אימייל</label>
+                    <input type="email" id="register-email" required>
+                </div>
+                <div class="form-group">
+                    <label for="register-password">סיסמה</label>
+                    <input type="password" id="register-password" required>
+                </div>
+                <div class="form-group">
+                    <label for="register-password-confirm">אימות סיסמה</label>
+                    <input type="password" id="register-password-confirm" required>
+                </div>
+                <button id="submit-register" class="primary-btn">הרשם</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     
     <script>
+        // Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyAH93WwphTZnCKhfmZv0EXz2ZC2LMJRfCU",
+            authDomain: "arabic-vocabulary-app.firebaseapp.com",
+            projectId: "arabic-vocabulary-app",
+            storageBucket: "arabic-vocabulary-app.firebasestorage.app",
+            messagingSenderId: "416598620126",
+            appId: "1:416598620126:web:ced53e36c34b9ed25bcf4f",
+            measurementId: "G-3YGS96ZS1F"
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+
+        // Get Firebase services
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        // User state variables
+        let currentUser = null;
+        let userProgress = {};
+
         // Global variables
         let vocabulary = [];
         let currentWords = [];
@@ -272,6 +538,232 @@
         const remainingCountElement = document.getElementById('remaining-count');
         const totalCountElement = document.getElementById('total-count');
         
+        // Auth state observer
+        auth.onAuthStateChanged((user) => {
+            if (user) {
+                // User is signed in
+                currentUser = user;
+                document.getElementById('user-name').textContent = user.email;
+                document.getElementById('auth-container').classList.add('logged-in');
+                loadUserProgress();
+                hideAuthModal();
+            } else {
+                // User is signed out
+                currentUser = null;
+                document.getElementById('user-name').textContent = 'אורח';
+                document.getElementById('auth-container').classList.remove('logged-in');
+                learnedWords = new Set(); // Reset progress when logged out
+                updateStats();
+            }
+        });
+
+        // Authentication functions
+        function login(email, password) {
+            const statusElement = document.getElementById('auth-status');
+            statusElement.textContent = 'מתחבר...';
+            
+            auth.signInWithEmailAndPassword(email, password)
+                .then((userCredential) => {
+                    // Login successful
+                    statusElement.textContent = 'התחברת בהצלחה!';
+                    statusElement.className = 'success-message';
+                })
+                .catch((error) => {
+                    // Handle errors
+                    statusElement.textContent = getHebrewErrorMessage(error.code);
+                    statusElement.className = 'error-message';
+                });
+        }
+
+        function register(email, password, passwordConfirm) {
+            const statusElement = document.getElementById('auth-status');
+            
+            // Validate passwords match
+            if (password !== passwordConfirm) {
+                statusElement.textContent = 'הסיסמאות אינן תואמות';
+                statusElement.className = 'error-message';
+                return;
+            }
+            
+            statusElement.textContent = 'יוצר חשבון...';
+            
+            auth.createUserWithEmailAndPassword(email, password)
+                .then((userCredential) => {
+                    // Registration successful
+                    statusElement.textContent = 'החשבון נוצר בהצלחה!';
+                    statusElement.className = 'success-message';
+                    
+                    // Create initial user data
+                    const user = userCredential.user;
+                    return db.collection('users').doc(user.uid).set({
+                        email: user.email,
+                        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                        progress: {}
+                    });
+                })
+                .catch((error) => {
+                    // Handle errors
+                    statusElement.textContent = getHebrewErrorMessage(error.code);
+                    statusElement.className = 'error-message';
+                });
+        }
+
+        function logout() {
+            auth.signOut()
+                .then(() => {
+                    // Sign-out successful
+                    learnedWords = new Set(); // Reset progress when logged out
+                    updateStats();
+                })
+                .catch((error) => {
+                    console.error('Logout error:', error);
+                });
+        }
+
+        // Load user progress from Firestore
+        function loadUserProgress() {
+            if (!currentUser) return;
+            
+            db.collection('users').doc(currentUser.uid).get()
+                .then((doc) => {
+                    if (doc.exists && doc.data().progress) {
+                        userProgress = doc.data().progress;
+                        
+                        // Restore learned words from saved progress
+                        learnedWords = new Set();
+                        Object.keys(userProgress).forEach(wordId => {
+                            if (userProgress[wordId].learned) {
+                                learnedWords.add(parseInt(wordId));
+                            }
+                        });
+                        
+                        updateStats();
+                    }
+                })
+                .catch((error) => {
+                    console.error('Error loading user progress:', error);
+                });
+        }
+
+        // Save user progress to Firestore
+        function saveUserProgress() {
+            if (!currentUser) return;
+            
+            // Create progress object
+            const progressData = {};
+            
+            // Save the learned state of each word
+            learnedWords.forEach(wordId => {
+                progressData[wordId] = {
+                    learned: true,
+                    lastSeen: firebase.firestore.FieldValue.serverTimestamp()
+                };
+            });
+            
+            // Save to Firestore
+            db.collection('users').doc(currentUser.uid).update({
+                progress: progressData,
+                lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+            })
+            .then(() => {
+                console.log('Progress saved successfully');
+                // Show save indicator if you want
+            })
+            .catch((error) => {
+                console.error('Error saving progress:', error);
+            });
+        }
+
+        // Show auth modal
+        function showAuthModal(mode = 'login') {
+            const modal = document.getElementById('auth-modal');
+            modal.style.display = 'flex';
+            
+            // Set the active tab
+            document.querySelectorAll('.auth-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.getElementById(`${mode}-tab`).classList.add('active');
+            
+            // Show the active form
+            document.querySelectorAll('.auth-form').forEach(form => {
+                form.style.display = 'none';
+            });
+            document.getElementById(`${mode}-form`).style.display = 'block';
+            
+            // Clear previous status messages
+            document.getElementById('auth-status').textContent = '';
+        }
+
+        // Hide auth modal
+        function hideAuthModal() {
+            const modal = document.getElementById('auth-modal');
+            modal.style.display = 'none';
+        }
+
+        // Switch between login and register forms
+        function switchAuthForm(mode) {
+            showAuthModal(mode);
+        }
+
+        // Get Hebrew error messages for firebase auth errors
+        function getHebrewErrorMessage(errorCode) {
+            const errorMessages = {
+                'auth/email-already-in-use': 'כתובת האימייל כבר בשימוש',
+                'auth/invalid-email': 'כתובת אימייל לא תקינה',
+                'auth/weak-password': 'הסיסמה חלשה מדי',
+                'auth/user-not-found': 'משתמש לא נמצא',
+                'auth/wrong-password': 'סיסמה שגויה',
+                'auth/too-many-requests': 'יותר מדי נסיונות התחברות, נסה שוב מאוחר יותר'
+            };
+            
+            return errorMessages[errorCode] || 'אירעה שגיאה. נסה שוב.';
+        }
+        
+        // Event listeners for authentication
+        document.getElementById('login-button').addEventListener('click', function() {
+            showAuthModal('login');
+        });
+
+        document.getElementById('register-button').addEventListener('click', function() {
+            showAuthModal('register');
+        });
+
+        document.getElementById('guest-login-button').addEventListener('click', function() {
+            showAuthModal('login');
+        });
+
+        document.getElementById('logout-button').addEventListener('click', function() {
+            logout();
+        });
+
+        document.getElementById('submit-login').addEventListener('click', function() {
+            const email = document.getElementById('login-email').value;
+            const password = document.getElementById('login-password').value;
+            
+            if (email && password) {
+                login(email, password);
+            } else {
+                const statusElement = document.getElementById('auth-status');
+                statusElement.textContent = 'אנא הזן אימייל וסיסמה';
+                statusElement.className = 'error-message';
+            }
+        });
+
+        document.getElementById('submit-register').addEventListener('click', function() {
+            const email = document.getElementById('register-email').value;
+            const password = document.getElementById('register-password').value;
+            const passwordConfirm = document.getElementById('register-password-confirm').value;
+            
+            if (email && password && passwordConfirm) {
+                register(email, password, passwordConfirm);
+            } else {
+                const statusElement = document.getElementById('auth-status');
+                statusElement.textContent = 'אנא מלא את כל השדות';
+                statusElement.className = 'error-message';
+            }
+        });
+        
         // Event listeners
         flashcard.addEventListener('click', flipCard);
         flipButton.addEventListener('click', flipCard);
@@ -287,6 +779,11 @@
                 const currentWord = currentWords[currentIndex];
                 learnedWords.add(currentWord.id);
                 updateStats();
+                
+                // Save progress if logged in
+                if (currentUser) {
+                    saveUserProgress();
+                }
             }
         }
         
