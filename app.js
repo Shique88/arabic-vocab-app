@@ -1,7 +1,30 @@
 // Firebase configuration is loaded from config.js
 
 // Initialize Firebase
-firebase.initializeApp(firebaseConfig);
+// Check if firebaseConfig exists before initializing
+if (typeof firebaseConfig !== 'undefined') {
+    firebase.initializeApp(firebaseConfig);
+} else {
+    console.error('Firebase configuration missing. Please ensure config.js is loaded correctly.');
+    // Define a fallback configuration for testing purposes
+    window.firebase = {
+        auth: () => ({
+            onAuthStateChanged: (cb) => cb(null),
+            signInWithEmailAndPassword: () => Promise.reject(new Error('Firebase not configured')),
+            createUserWithEmailAndPassword: () => Promise.reject(new Error('Firebase not configured')),
+            signOut: () => Promise.resolve()
+        }),
+        firestore: () => ({
+            collection: () => ({
+                doc: () => ({
+                    get: () => Promise.resolve({exists: false, data: () => ({})}),
+                    set: () => Promise.resolve(),
+                    update: () => Promise.resolve()
+                })
+            })
+        })
+    };
+}
 
 // Get Firebase services
 const auth = firebase.auth();
@@ -863,8 +886,6 @@ function processVocabularyData(data) {
             categories.add(category);
         }
     });
-  function processVocabularyData(data) {
-    // This function continues from the previous file
     
     console.log("Processed vocabulary data:", vocabulary.length, "words");
     console.log("Categories:", Array.from(categories));
@@ -882,347 +903,3 @@ function processVocabularyData(data) {
     updateControls();
     updateStats();
 }
-
-function createCategoryButtons(categoryList) {
-    console.log("Creating category buttons:", categoryList);
-    categoriesContainer.innerHTML = '<button class="category-btn active" data-category="all">הכל</button>';
-    
-    categoryList.forEach(category => {
-        const button = document.createElement('button');
-        button.className = 'category-btn';
-        button.textContent = category;
-        button.dataset.category = category;
-        button.addEventListener('click', () => filterByCategory(category));
-        categoriesContainer.appendChild(button);
-    });
-    
-    // Add event listener to "All" button
-    const allButton = categoriesContainer.querySelector('[data-category="all"]');
-    if (allButton) {
-        allButton.addEventListener('click', () => filterByCategory('all'));
-    }
-}
-
-function updateStats() {
-    const total = currentWords.length;
-    const learned = currentWords.filter(word => learnedWords.has(word.id)).length;
-    const remaining = total - learned;
-    const progress = total > 0 ? Math.round((learned / total) * 100) : 0;
-    
-    learnedCountElement.textContent = learned;
-    remainingCountElement.textContent = remaining;
-    totalCountElement.textContent = total;
-    progressBar.value = progress;
-    progressText.textContent = `${progress}%`;
-}
-
-// Function to load the default Excel file
-async function loadDefaultExcelFile() {
-    try {
-        // Path to your Excel file - update this to your actual filename
-        const excelFilePath = '/arabic-vocab-app/vocabulary.xlsx';
-        
-        dataInfo.textContent = 'טוען נתונים...';
-        statusIndicator.className = 'status-indicator loading';
-        
-        // Fetch the Excel file
-        const response = await fetch(excelFilePath);
-        if (!response.ok) {
-            throw new Error(`נכשלה טעינת הקובץ: ${response.status} ${response.statusText}`);
-        }
-        
-        // Convert the response to an ArrayBuffer
-        const data = await response.arrayBuffer();
-        
-        // Process the Excel data
-        const workbook = XLSX.read(new Uint8Array(data), {type: 'array'});
-        
-        // Get all sheet names
-        const sheetNames = workbook.SheetNames;
-        console.log("Excel sheet names:", sheetNames);
-        
-        // Filter sheets to only those containing 'P'
-        const filteredSheetNames = sheetNames.filter(sheetName => sheetName.includes('P'));
-        console.log("Filtered sheet names:", filteredSheetNames);
-        
-        if (filteredSheetNames.length === 0) {
-            // No sheets with 'P' found, use all sheets
-            console.log("No sheets with 'P' found, using all sheets");
-            
-            let allData = [];
-            sheetData = {}; // Reset sheet data
-            
-            // Process each sheet
-            sheetNames.forEach(sheetName => {
-                const worksheet = workbook.Sheets[sheetName];
-                
-                // Convert to JSON
-                const jsonData = XLSX.utils.sheet_to_json(worksheet);
-                console.log(`Sheet ${sheetName}: ${jsonData.length} entries`);
-                
-                // Store data by sheet name
-                sheetData[sheetName] = jsonData;
-                
-                // Add sheet name as category if not specified
-                jsonData.forEach(item => {
-                    if (!item.category && !item.Category) {
-                        item.sheetCategory = sheetName;
-                    }
-                });
-                
-                allData = [...allData, ...jsonData];
-            });
-            
-            processVocabularyData(allData);
-            
-            // Update status to success
-            statusIndicator.className = 'status-indicator success';
-            dataInfo.textContent = `נטענו ${allData.length} מילים בהצלחה (כל הגיליונות)`;
-            
-            // Create a detailed sheet information display
-            sheetsInfo.innerHTML = `
-                <div>נטענו נתונים מ-${sheetNames.length} גיליונות:</div>
-                <div class="sheet-list">
-                    ${sheetNames.map(sheet => `<span class="sheet-badge">${sheet}</span>`).join('')}
-                </div>
-            `;
-        } else {
-            // Process filtered sheets
-            let allData = [];
-            sheetData = {}; // Reset sheet data
-            
-            // Process each filtered sheet
-            filteredSheetNames.forEach(sheetName => {
-                const worksheet = workbook.Sheets[sheetName];
-                
-                // Convert to JSON
-                const jsonData = XLSX.utils.sheet_to_json(worksheet);
-                console.log(`Sheet ${sheetName}: ${jsonData.length} entries`);
-                
-                // Create display name by removing only the letter 'P'
-                let displayName = sheetName.replace(/P/g, '');
-                console.log(`Display name for ${sheetName}: ${displayName}`);
-                
-                // Store data by sheet name
-                sheetData[sheetName] = jsonData;
-                
-                // Add modified sheet name as category if not specified
-                jsonData.forEach(item => {
-                    if (!item.category && !item.Category) {
-                        item.sheetCategory = displayName; // Use the name without 'P'
-                    }
-                });
-                
-                allData = [...allData, ...jsonData];
-            });
-            
-            console.log("Total data entries:", allData.length);
-            processVocabularyData(allData);
-            
-            // Update status to success
-            statusIndicator.className = 'status-indicator success';
-            dataInfo.textContent = `נטענו ${allData.length} מילים בהצלחה`;
-            
-            // Get display names for the badges (without 'P')
-            const displayNames = filteredSheetNames.map(sheetName => {
-                return sheetName.replace(/P/g, '');
-            });
-            
-            // Create a detailed sheet information display with modified names
-            sheetsInfo.innerHTML = `
-                <div>נטענו נתונים מ-${filteredSheetNames.length} גיליונות:</div>
-                <div class="sheet-list">
-                    ${displayNames.map(sheet => `<span class="sheet-badge">${sheet}</span>`).join('')}
-                </div>
-            `;
-        }
-    } catch (error) {
-        console.error('Error loading default Excel file:', error);
-        statusIndicator.className = 'status-indicator error';
-        dataInfo.textContent = `שגיאה בטעינת קובץ ברירת המחדל: ${error.message}`;
-        sheetsInfo.innerHTML = '';
-    }
-}
-
-// Initialize the mode buttons
-function initializeModeButtons() {
-    // Flashcard mode button
-    flashcardModeButton.addEventListener('click', function() {
-        switchToMode('flashcard');
-    });
-    
-    // Test mode button
-    testModeButton.addEventListener('click', function() {
-        switchToMode('test');
-    });
-    
-    // Reset progress button
-    resetProgressBtn.addEventListener('click', function() {
-        confirmResetContainer.style.display = 'block';
-    });
-    
-    // Confirm reset - Yes
-    confirmResetYes.addEventListener('click', function() {
-        resetUserProgress();
-    });
-    
-    // Confirm reset - No
-    confirmResetNo.addEventListener('click', function() {
-        confirmResetContainer.style.display = 'none';
-    });
-}
-
-// Auth state observer
-auth.onAuthStateChanged((user) => {
-    if (user) {
-        // User is signed in
-        currentUser = user;
-        document.getElementById('user-name').textContent = user.email;
-        document.getElementById('auth-container').classList.add('logged-in');
-        loadUserProgress();
-        loadSRSFromFirebase(); // Load SRS data from Firebase
-        hideAuthModal();
-    } else {
-        // User is signed out
-        currentUser = null;
-        document.getElementById('user-name').textContent = 'אורח';
-        document.getElementById('auth-container').classList.remove('logged-in');
-        learnedWords = new Set(); // Reset progress when logged out
-        loadFromLocalStorage(); // Load SRS data from localStorage
-        updateStats();
-    }
-});
-
-// Authentication functions
-function login(email, password) {
-    const statusElement = document.getElementById('auth-status');
-    statusElement.textContent = 'מתחבר...';
-    
-    auth.signInWithEmailAndPassword(email, password)
-        .then((userCredential) => {
-            // Login successful
-            statusElement.textContent = 'התחברת בהצלחה!';
-            statusElement.className = 'success-message';
-        })
-        .catch((error) => {
-            // Handle errors
-            statusElement.textContent = getHebrewErrorMessage(error.code);
-            statusElement.className = 'error-message';
-        });
-}
-
-function register(email, password, passwordConfirm) {
-    const statusElement = document.getElementById('auth-status');
-    
-    // Validate passwords match
-    if (password !== passwordConfirm) {
-        statusElement.textContent = 'הסיסמאות אינן תואמות';
-        statusElement.className = 'error-message';
-        return;
-    }
-    
-    statusElement.textContent = 'יוצר חשבון...';
-    
-    auth.createUserWithEmailAndPassword(email, password)
-        .then((userCredential) => {
-            // Registration successful
-            statusElement.textContent = 'החשבון נוצר בהצלחה!';
-            statusElement.className = 'success-message';
-            
-            // Create initial user data
-            const user = userCredential.user;
-            return db.collection('users').doc(user.uid).set({
-                email: user.email,
-                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                progress: {},
-                srs: {} // Initialize SRS field
-            });
-        })
-        .catch((error) => {
-            // Handle errors
-            statusElement.textContent = getHebrewErrorMessage(error.code);
-            statusElement.className = 'error-message';
-        });
-}
-
-function logout() {
-    auth.signOut()
-        .then(() => {
-            // Sign-out successful
-            learnedWords = new Set(); // Reset progress when logged out
-            updateStats();
-        })
-        .catch((error) => {
-            console.error('Logout error:', error);
-        });
-}
-
-// Event listeners for authentication
-document.getElementById('login-button').addEventListener('click', function() {
-    showAuthModal('login');
-});
-
-document.getElementById('register-button').addEventListener('click', function() {
-    showAuthModal('register');
-});
-
-document.getElementById('guest-login-button').addEventListener('click', function() {
-    showAuthModal('login');
-});
-
-document.getElementById('logout-button').addEventListener('click', function() {
-    logout();
-});
-
-document.getElementById('submit-login').addEventListener('click', function() {
-    const email = document.getElementById('login-email').value;
-    const password = document.getElementById('login-password').value;
-    
-    if (email && password) {
-        login(email, password);
-    } else {
-        const statusElement = document.getElementById('auth-status');
-        statusElement.textContent = 'אנא הזן אימייל וסיסמה';
-        statusElement.className = 'error-message';
-    }
-});
-
-document.getElementById('submit-register').addEventListener('click', function() {
-    const email = document.getElementById('register-email').value;
-    const password = document.getElementById('register-password').value;
-    const passwordConfirm = document.getElementById('register-password-confirm').value;
-    
-    if (email && password && passwordConfirm) {
-        register(email, password, passwordConfirm);
-    } else {
-        const statusElement = document.getElementById('auth-status');
-        statusElement.textContent = 'אנא מלא את כל השדות';
-        statusElement.className = 'error-message';
-    }
-});
-
-// Load data and set up buttons
-document.addEventListener('DOMContentLoaded', function() {
-    console.log("DOM loaded, initializing app");
-    
-    // Load SRS data
-    loadFromLocalStorage();
-    
-    // Set up button click handlers
-    flashcard.onclick = flipCard;
-    flipButton.onclick = flipCard;
-    prevButton.onclick = showPreviousCard;
-    nextButton.onclick = showNextCard;
-    
-    // Load data
-    loadDefaultExcelFile();
-    
-    // Initialize after a short delay
-    setTimeout(function() {
-        // Initialize mode buttons
-        initializeModeButtons();
-        
-        // Start in flashcard mode
-        switchToMode('flashcard');
-    }, 1000);
-});
