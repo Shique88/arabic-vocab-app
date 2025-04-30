@@ -960,7 +960,7 @@
         // Function to load the default Excel file
         async function loadDefaultExcelFile() {
             try {
-                // Path to your Excel file - update this to your actual filename
+                // Path to your Excel file
                 const excelFilePath = 'vocabulary.xlsx';
                 
                 dataInfo.textContent = 'טוען נתונים...';
@@ -980,18 +980,28 @@
                 
                 // Get all sheet names
                 const sheetNames = workbook.SheetNames;
-                console.log('All sheet names:', sheetNames);
+                console.log('Original sheet names:', sheetNames);
                 
                 // Filter sheets to only those containing 'P'
-                const filteredSheetNames = sheetNames.filter(sheetName => sheetName.includes('P'));
-                console.log('Filtered sheet names (with P):', filteredSheetNames);
+                const filteredSheetNames = sheetNames.filter(sheetName => 
+                    sheetName.toUpperCase().includes('P'));
+                console.log('Filtered sheet names (containing P):', filteredSheetNames);
                 
-                // If no sheets contain 'P', show a warning but proceed with all sheets
+                // If no sheets contain 'P', use all sheets
                 if (filteredSheetNames.length === 0) {
-                    console.warn('No sheets containing "P" were found. Using all sheets instead.');
+                    console.warn('No sheets with "P" found. Using all sheets.');
                     processAllSheets(workbook, sheetNames);
                     return;
                 }
+                
+                // Create mapping of original names to display names
+                const nameMapping = {};
+                filteredSheetNames.forEach(originalName => {
+                    // Remove all occurrences of both uppercase and lowercase 'P'
+                    let displayName = originalName.replace(/p/gi, '');
+                    nameMapping[originalName] = displayName;
+                    console.log(`${originalName} → ${displayName}`);
+                });
                 
                 let allData = [];
                 sheetData = {}; // Reset sheet data
@@ -999,21 +1009,18 @@
                 // Process each filtered sheet
                 filteredSheetNames.forEach(sheetName => {
                     const worksheet = workbook.Sheets[sheetName];
-                    
-                    // Convert to JSON
                     const jsonData = XLSX.utils.sheet_to_json(worksheet);
                     
-                    // Create display name by removing only the letter 'P'
-                    let displayName = sheetName.replace(/P/g, '');
-                    console.log(`Sheet: ${sheetName} → Display name: ${displayName}`);
+                    // Get the display name from our mapping
+                    const displayName = nameMapping[sheetName];
                     
-                    // Store data by sheet name
+                    // Store data by original sheet name
                     sheetData[sheetName] = jsonData;
                     
-                    // Add modified sheet name as category if not specified
+                    // Add display name as category if not specified
                     jsonData.forEach(item => {
                         if (!item.category && !item.Category) {
-                            item.sheetCategory = displayName; // Use the name without 'P'
+                            item.sheetCategory = displayName;
                         }
                     });
                     
@@ -1026,17 +1033,14 @@
                 statusIndicator.className = 'status-indicator success';
                 dataInfo.textContent = `נטענו ${allData.length} מילים בהצלחה`;
                 
-                // Get display names for the badges (without 'P')
-                const displayNames = filteredSheetNames.map(sheetName => {
-                    // Remove only the letter 'P'
-                    return sheetName.replace(/P/g, '');
-                });
+                // Use our name mapping for display names
+                const displayNames = filteredSheetNames.map(name => nameMapping[name]);
                 
-                // Create a detailed sheet information display with modified names
+                // Create a detailed sheet information display
                 sheetsInfo.innerHTML = `
                     <div>נטענו נתונים מ-${filteredSheetNames.length} גיליונות:</div>
                     <div class="sheet-list">
-                        ${displayNames.map(sheet => `<span class="sheet-badge">${sheet}</span>`).join('')}
+                        ${displayNames.map(name => `<span class="sheet-badge">${name}</span>`).join('')}
                     </div>
                 `;
             } catch (error) {
@@ -1055,8 +1059,6 @@
             // Process each sheet
             sheetNames.forEach(sheetName => {
                 const worksheet = workbook.Sheets[sheetName];
-                
-                // Convert to JSON
                 const jsonData = XLSX.utils.sheet_to_json(worksheet);
                 
                 // Store data by sheet name
