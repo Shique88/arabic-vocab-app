@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arabic Vocabulary Learning App</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f5f5;
+            margin: 0;
+            padding: 0;
+            direction: rtl;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        header {
+            background-color: #2c3e50;
+            color: white;
+            padding: 20px;
+            text-align: center;
+            border-radius: 5px 5px 0 0;
+        }
+        .app-section {
+            background-color: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            padding: 20px;
+        }
+        .flashcard {
+            height: 200px;
+            perspective: 1000px;
+            margin: 20px 0;
+            cursor: pointer;
+        }
+        .flashcard-inner {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            text-align: center;
+            transition: transform 0.6s;
+            transform-style: preserve-3d;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        .flashcard.flipped .flashcard-inner {
+            transform: rotateY(180deg);
+        }
+        .flashcard-front, .flashcard-back {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            -webkit-backface-visibility: hidden;
+            backface-visibility: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2em;
+            border-radius: 5px;
+        }
+        .flashcard-front {
+            background-color: #3498db;
+            color: white;
+        }
+        .flashcard-back {
+            background-color: #2ecc71;
+            color: white;
+            transform: rotateY(180deg);
+        }
+        .controls {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 20px;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1em;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        button:disabled {
+            background-color: #95a5a6;
+            cursor: not-allowed;
+        }
+        .file-input {
+            margin: 20px 0;
+        }
+        .sheets-info {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #edf7ff;
+            border-radius: 5px;
+            border-right: 4px solid #3498db;
+        }
+        .sheet-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 8px;
+        }
+        .sheet-badge {
+            background-color: #3498db;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 0.9em;
+        }
+        .category-selector {
+            margin: 20px 0;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .category-btn {
+            padding: 8px 16px;
+            background-color: #ecf0f1;
+            color: #2c3e50;
+            border: 1px solid #bdc3c7;
+            border-radius: 20px;
+            cursor: pointer;
+        }
+        .category-btn.active {
+            background-color: #3498db;
+            color: white;
+        }
+        .stats {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 20px;
+            text-align: center;
+        }
+        .stat-item {
+            background-color: #ecf0f1;
+            padding: 10px;
+            border-radius: 5px;
+            min-width: 100px;
+        }
+        .progress-container {
+            margin: 20px 0;
+        }
+        progress {
+            width: 100%;
+            height: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>מילון אוצר מילים בערבית</h1>
+        </header>
+        
+        <div class="app-section">
+            <h2>טען את הנתונים שלך</h2>
+            <div class="file-input">
+                <input type="file" id="excel-upload" accept=".xlsx, .xls" />
+                <button id="load-data">טען נתונים</button>
+            </div>
+            <div id="data-info"></div>
+            <div id="sheets-info" class="sheets-info"></div>
+        </div>
+        
+        <div class="app-section">
+            <h2>קטגוריות</h2>
+            <div class="category-selector" id="categories">
+                <!-- Categories will be populated here -->
+            </div>
+        </div>
+        
+        <div class="app-section">
+            <h2>למידה באמצעות כרטיסיות</h2>
+            <div class="flashcard" id="flashcard">
+                <div class="flashcard-inner">
+                    <div class="flashcard-front">
+                        <div id="word">טען נתונים כדי להתחיל</div>
+                    </div>
+                    <div class="flashcard-back">
+                        <div id="translation"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="controls">
+                <button id="prev" disabled>הקודם</button>
+                <button id="flip">הפוך כרטיסייה</button>
+                <button id="next" disabled>הבא</button>
+            </div>
+        </div>
+        
+        <div class="app-section">
+            <h2>ההתקדמות שלך</h2>
+            <div class="progress-container">
+                <progress id="progress" value="0" max="100"></progress>
+                <div id="progress-text">0%</div>
+            </div>
+            <div class="stats">
+                <div class="stat-item">
+                    <div>מילים שנלמדו</div>
+                    <div id="learned-count">0</div>
+                </div>
+                <div class="stat-item">
+                    <div>מילים שנותרו</div>
+                    <div id="remaining-count">0</div>
+                </div>
+                <div class="stat-item">
+                    <div>סך הכל מילים</div>
+                    <div id="total-count">0</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    
+    <script>
+        // Global variables
+        let vocabulary = [];
+        let currentWords = [];
+        let currentIndex = 0;
+        let categories = [];
+        let learnedWords = new Set();
+        let sheetData = {}; // Store data by sheet
+        
+        // DOM elements
+        const flashcard = document.getElementById('flashcard');
+        const wordElement = document.getElementById('word');
+        const translationElement = document.getElementById('translation');
+        const prevButton = document.getElementById('prev');
+        const nextButton = document.getElementById('next');
+        const flipButton = document.getElementById('flip');
+        const loadButton = document.getElementById('load-data');
+        const fileInput = document.getElementById('excel-upload');
+        const dataInfo = document.getElementById('data-info');
+        const categoriesContainer = document.getElementById('categories');
+        const progressBar = document.getElementById('progress');
+        const progressText = document.getElementById('progress-text');
+        const learnedCountElement = document.getElementById('learned-count');
+        const remainingCountElement = document.getElementById('remaining-count');
+        const totalCountElement = document.getElementById('total-count');
+        
+        // Event listeners
+        flashcard.addEventListener('click', flipCard);
+        flipButton.addEventListener('click', flipCard);
+        prevButton.addEventListener('click', showPreviousCard);
+        nextButton.addEventListener('click', showNextCard);
+        loadButton.addEventListener('click', loadExcelData);
+        
+        // Functions
+        function flipCard() {
+            flashcard.classList.toggle('flipped');
+            
+            // Mark as learned when flipped to see translation
+            if (flashcard.classList.contains('flipped') && currentWords.length > 0) {
+                const currentWord = currentWords[currentIndex];
+                learnedWords.add(currentWord.id);
+                updateStats();
+            }
+        }
+        
+        function showNextCard() {
+            if (currentIndex < currentWords.length - 1) {
+                // First ensure card is showing front side
+                if (flashcard.classList.contains('flipped')) {
+                    // Add transition end listener to update card after flip completes
+                    const updateAfterFlip = function() {
+                        currentIndex++;
+                        updateCard();
+                        updateControls();
+                        flashcard.removeEventListener('transitionend', updateAfterFlip);
+                    };
+                    
+                    flashcard.addEventListener('transitionend', updateAfterFlip);
+                    flashcard.classList.remove('flipped');
+                } else {
+                    // If already showing front, just update normally
+                    currentIndex++;
+                    updateCard();
+                    updateControls();
+                }
+            }
+        }
+        
+        function showPreviousCard() {
+            if (currentIndex > 0) {
+                // First ensure card is showing front side
+                if (flashcard.classList.contains('flipped')) {
+                    // Add transition end listener to update card after flip completes
+                    const updateAfterFlip = function() {
+                        currentIndex--;
+                        updateCard();
+                        updateControls();
+                        flashcard.removeEventListener('transitionend', updateAfterFlip);
+                    };
+                    
+                    flashcard.addEventListener('transitionend', updateAfterFlip);
+                    flashcard.classList.remove('flipped');
+                } else {
+                    // If already showing front, just update normally
+                    currentIndex--;
+                    updateCard();
+                    updateControls();
+                }
+            }
+        }
+        
+        function updateCard() {
+            if (currentWords.length === 0) {
+                wordElement.textContent = 'אין מילים זמינות';
+                translationElement.textContent = '';
+                return;
+            }
+            
+            const currentWord = currentWords[currentIndex];
+            
+            // Reset card to front side
+            if (flashcard.classList.contains('flipped')) {
+                flashcard.classList.remove('flipped');
+            }
+            
+            wordElement.textContent = currentWord.arabic;
+            translationElement.textContent = currentWord.hebrew;
+        }
+        
+        function updateControls() {
+            prevButton.disabled = currentIndex === 0;
+            nextButton.disabled = currentIndex === currentWords.length - 1;
+        }
+        
+        function loadExcelData() {
+            const file = fileInput.files[0];
+            if (!file) {
+                dataInfo.textContent = 'אנא בחר קובץ אקסל';
+                return;
+            }
+            
+            dataInfo.textContent = 'טוען נתונים...';
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, {type: 'array'});
+                
+                // Get all sheet names
+                const sheetNames = workbook.SheetNames;
+                let allData = [];
+                sheetData = {}; // Reset sheet data
+                
+                // Process each sheet
+                sheetNames.forEach(sheetName => {
+                    const worksheet = workbook.Sheets[sheetName];
+                    
+                    // Convert to JSON
+                    const jsonData = XLSX.utils.sheet_to_json(worksheet);
+                    
+                    // Store data by sheet name
+                    sheetData[sheetName] = jsonData;
+                    
+                    // Add sheet name as category if not specified
+                    jsonData.forEach(item => {
+                        if (!item.category && !item.Category) {
+                            item.sheetCategory = sheetName;
+                        }
+                    });
+                    
+                    allData = [...allData, ...jsonData];
+                });
+                
+                processVocabularyData(allData);
+                
+                // Display sheet information
+                dataInfo.textContent = `נטענו ${allData.length} מילים בהצלחה`;
+                
+                // Create a detailed sheet information display
+                const sheetsInfo = document.getElementById('sheets-info');
+                sheetsInfo.innerHTML = `
+                    <div>נטענו נתונים מ-${sheetNames.length} גיליונות:</div>
+                    <div class="sheet-list">
+                        ${sheetNames.map(sheet => `<span class="sheet-badge">${sheet}</span>`).join('')}
+                    </div>
+                `;
+            };
+            reader.readAsArrayBuffer(file);
+        }
+        
+        function processVocabularyData(data) {
+            vocabulary = [];
+            categories = new Set();
+            
+            // Assume Excel has columns: Arabic, Hebrew, Category
+            data.forEach((row, index) => {
+                const keys = Object.keys(row);
+                let arabic = '', hebrew = '', category = 'כללי';
+                
+                // Try to intelligently identify the columns
+                keys.forEach(key => {
+                    const value = row[key];
+                    if (!value) return;
+                    
+                    // Assuming Arabic words will be in Arabic script
+                    // and translations in Hebrew script
+                    if (typeof value === 'string') {
+                        if (!arabic && (key.toLowerCase().includes('arab') || key.toLowerCase() === 'word')) {
+                            arabic = value;
+                        } else if (!hebrew && (key.toLowerCase().includes('heb') || key.toLowerCase() === 'translation')) {
+                            hebrew = value;
+                        } else if (!category && key.toLowerCase().includes('cat')) {
+                            category = value;
+                        } else if (!arabic) {
+                            arabic = value;
+                        } else if (!hebrew) {
+                            hebrew = value;
+                        }
+                    }
+                });
+                
+                // Fallback for simple two-column format
+                if (!arabic && keys.length >= 1) arabic = row[keys[0]];
+                if (!hebrew && keys.length >= 2) hebrew = row[keys[1]];
+                
+                // Use sheet name as category if provided and no category column exists
+                if (row.sheetCategory && (!category || category === 'כללי')) {
+                    category = row.sheetCategory;
+                }
+                
+                if (arabic && hebrew) {
+                    vocabulary.push({
+                        id: index,
+                        arabic,
+                        hebrew,
+                        category
+                    });
+                    categories.add(category);
+                }
+            });
+            
+            dataInfo.textContent = `נטענו ${vocabulary.length} מילים בהצלחה`;
+            
+            // Initialize with all words
+            currentWords = [...vocabulary];
+            updateCard();
+            updateControls();
+            createCategoryButtons([...categories].sort());
+            updateStats();
+        }
+        
+        function createCategoryButtons(categoryList) {
+            categoriesContainer.innerHTML = '<button class="category-btn active" data-category="all">הכל</button>';
+            
+            categoryList.forEach(category => {
+                const button = document.createElement('button');
+                button.className = 'category-btn';
+                button.textContent = category;
+                button.dataset.category = category;
+                button.addEventListener('click', () => filterByCategory(category));
+                categoriesContainer.appendChild(button);
+            });
+            
+            // Add event listener to "All" button
+            categoriesContainer.querySelector('[data-category="all"]').addEventListener('click', () => filterByCategory('all'));
+        }
+        
+        function filterByCategory(category) {
+            // Update active button
+            document.querySelectorAll('.category-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.querySelector(`[data-category="${category}"]`).classList.add('active');
+            
+            if (category === 'all') {
+                currentWords = [...vocabulary];
+            } else {
+                currentWords = vocabulary.filter(word => word.category === category);
+            }
+            
+            currentIndex = 0;
+            updateCard();
+            updateControls();
+            updateStats();
+        }
+        
+        function updateStats() {
+            const total = currentWords.length;
+            const learned = currentWords.filter(word => learnedWords.has(word.id)).length;
+            const remaining = total - learned;
+            const progress = total > 0 ? Math.round((learned / total) * 100) : 0;
+            
+            learnedCountElement.textContent = learned;
+            remainingCountElement.textContent = remaining;
+            totalCountElement.textContent = total;
+            progressBar.value = progress;
+            progressText.textContent = `${progress}%`;
+        }
+        
+        // Initialize with empty state
+        updateCard();
+        updateControls();
+    </script>
+</body>
+</html>
