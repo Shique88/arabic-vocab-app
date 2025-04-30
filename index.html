@@ -641,5 +641,126 @@
     
     <!-- Our JavaScript Code -->
     <script src="app.js"></script>
+
+    <!-- This code should be placed right before the closing </body> tag in your index.html file -->
+    <!-- It ensures proper loading order and adds diagnostic JavaScript -->
+    
+    <script>
+      // Check if XLSX is loaded
+      if (typeof XLSX === 'undefined') {
+        console.error('XLSX library not loaded! Loading fallback version...');
+        
+        // Create a script element for XLSX
+        const xlsxScript = document.createElement('script');
+        xlsxScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+        xlsxScript.async = false;
+        document.body.appendChild(xlsxScript);
+        
+        // Set a flag to retry initialization after XLSX loads
+        xlsxScript.onload = function() {
+          console.log('XLSX loaded successfully from fallback source');
+          window.xlsxLoaded = true;
+          // If app.js has already run, try to initialize again
+          if (window.appInitialized) {
+            console.log('Trying to initialize app again after loading XLSX');
+            window.initializeApp && window.initializeApp();
+          }
+        };
+      }
+      
+      // Check if Firebase is loaded
+      if (typeof firebase === 'undefined') {
+        console.error('Firebase not loaded! Loading fallback versions...');
+        
+        // Load Firebase App
+        const firebaseAppScript = document.createElement('script');
+        firebaseAppScript.src = 'https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js';
+        firebaseAppScript.async = false;
+        document.body.appendChild(firebaseAppScript);
+        
+        // Load Firebase Auth after App loads
+        firebaseAppScript.onload = function() {
+          console.log('Firebase App loaded from fallback source');
+          
+          const firebaseAuthScript = document.createElement('script');
+          firebaseAuthScript.src = 'https://www.gstatic.com/firebasejs/9.6.10/firebase-auth-compat.js';
+          firebaseAuthScript.async = false;
+          document.body.appendChild(firebaseAuthScript);
+          
+          // Load Firebase Firestore after Auth loads
+          firebaseAuthScript.onload = function() {
+            console.log('Firebase Auth loaded from fallback source');
+            
+            const firestoreScript = document.createElement('script');
+            firestoreScript.src = 'https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js';
+            firestoreScript.async = false;
+            document.body.appendChild(firestoreScript);
+            
+            firestoreScript.onload = function() {
+              console.log('Firebase Firestore loaded from fallback source');
+              
+              // Create a mock firebase config if needed
+              if (typeof firebaseConfig === 'undefined') {
+                console.warn('No firebase configuration found, creating a minimal mock version');
+                
+                window.firebaseConfig = {
+                  apiKey: "mock-api-key",
+                  authDomain: "mock-app.firebaseapp.com",
+                  projectId: "mock-project-id",
+                  storageBucket: "mock-app.appspot.com",
+                  messagingSenderId: "123456789",
+                  appId: "1:123456789:web:abc123def456"
+                };
+              }
+              
+              // If app.js has already run, try to initialize again
+              if (window.appInitialized) {
+                console.log('Trying to initialize app again after loading Firebase');
+                window.initializeApp && window.initializeApp();
+              }
+            };
+          };
+        };
+      }
+      
+      // Check if config.js failed to load and create a default config
+      if (typeof firebaseConfig === 'undefined') {
+        console.warn('Firebase config not defined after loading scripts, creating default');
+        window.firebaseConfig = {
+          apiKey: "mock-api-key",
+          authDomain: "mock-app.firebaseapp.com",
+          projectId: "mock-project-id",
+          storageBucket: "mock-app.appspot.com",
+          messagingSenderId: "123456789",
+          appId: "1:123456789:web:abc123def456"
+        };
+      }
+      
+      // Check if app.js is loaded correctly
+      setTimeout(function() {
+        if (!window.appInitialized && typeof initializeApp !== 'function') {
+          console.error('Application did not initialize correctly. Attempting repair...');
+          
+          // Load app.js again
+          const appScript = document.createElement('script');
+          appScript.src = 'app.js';
+          appScript.async = false;
+          appScript.onload = function() {
+            console.log('Reloaded app.js');
+            
+            // If initializeApp is now defined, call it
+            if (typeof initializeApp === 'function') {
+              console.log('Calling initializeApp after reload');
+              initializeApp();
+            } else {
+              console.error('Failed to load app.js correctly');
+              // Show error message to user
+              alert('אירעה שגיאה בטעינת האפליקציה. נא לרענן את הדף.');
+            }
+          };
+          document.body.appendChild(appScript);
+        }
+      }, 2000);
+    </script>
 </body>
 </html>
