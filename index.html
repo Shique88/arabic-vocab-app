@@ -1,70 +1,4 @@
-        // Check if the selected items match
-        function checkForMatch() {
-            const arabicId = selectedArabicItem.dataset.id;
-            const hebrewId = selectedHebrewItem.dataset.id;
-            
-            if (arabicId === hebrewId) {
-                // It's a match!
-                selectedArabicItem.classList.add('matched');
-                selectedHebrewItem.classList.add('matched');
-                selectedArabicItem.classList.remove('selected');
-                selectedHebrewItem.classList.remove('selected');
-                
-                // Mark this word as learned
-                learnedWords.add(parseInt(arabicId));
-                
-                // Update SRS data - correct match
-                updateSRS(arabicId, true);
-                
-                // Update internal match count
-                matchedPairs++;
-                
-                // Display feedback
-                testFeedback.textContent = 'התאמה נכונה!';
-                testFeedback.style.color = '#27ae60';
-                
-                // Clear selections
-                selectedArabicItem = null;
-                selectedHebrewItem = null;
-                
-                // Check if all pairs are matched
-                if (matchedPairs === TEST_PAIR_COUNT) {
-                    // Test completed
-                    setTimeout(() => {
-                        testFeedback.textContent = 'כל הכבוד! סיימת את המבחן!';
-                        
-                        // Save progress if logged in
-                        if (currentUser) {
-                            saveUserProgress();
-                        }
-                        
-                        // Update stats
-                        updateStats();
-                        
-                        // Reset and show new words after 1.5 seconds
-                        setTimeout(() => {
-                            initializeTestMode();
-                        }, 1500);
-                    }, 500);
-                }
-            } else {
-                // Not a match - mark both words as difficult in SRS
-                updateSRS(arabicId, false);
-                updateSRS(hebrewId, false);
-                
-                // Display feedback
-                testFeedback.textContent = 'לא התאמה, נסה שוב';
-                testFeedback.style.color = '#e74c3c';
-                
-                // Clear selections after a brief delay
-                setTimeout(() => {
-                    selectedArabicItem.classList.remove('selected');
-                    selectedHebrewItem.classList.remove('selected');
-                    selectedArabicItem = null;
-                    selectedHebrewItem = null;
-                }, 1000);
-            }
-        }<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
     <meta charset="UTF-8">
@@ -78,6 +12,803 @@
             padding: 0;
             direction: rtl;
         }
+        
+        // Reset user progress
+        function resetUserProgress() {
+            if (!currentUser) return;
+            
+            try {
+                // Clear learned words
+                learnedWords = new Set();
+                
+                // Reset SRS data
+                srsData = {};
+                
+                // Update Firebase
+                db.collection('users').doc(currentUser.uid).update({
+                    progress: {},
+                    srs: {},
+                    lastReset: firebase.firestore.FieldValue.serverTimestamp()
+                })
+                .then(() => {
+                    console.log('Progress reset successfully');
+                    
+                    // Hide confirmation dialog
+                    confirmResetContainer.style.display = 'none';
+                    
+                    // Update UI
+                    updateStats();
+                    updateSRSDisplay();
+                    if (flashcardContainer.style.display !== 'none') {
+                        updateCard();
+                    }
+                    
+                    // Show success message
+                    alert('ההתקדמות שלך אופסה בהצלחה.');
+                })
+                .catch((error) => {
+                    console.error('Error resetting progress:', error);
+                    alert('שגיאה באיפוס ההתקדמות. נסה שוב מאוחר יותר.');
+                });
+            } catch (error) {
+                console.error('Error in resetUserProgress:', error);
+            }
+        }
+        
+        // Auth state observer
+        auth.onAuthStateChanged((user) => {
+            if (user) {
+                // User is signed in
+                currentUser = user;
+                document.getElementById('user-name').textContent = user.email;
+                document.getElementById('auth-container').classList.add('logged-in');
+                loadUserProgress();
+                loadSRSFromFirebase(); // Load SRS data from Firebase
+                hideAuthModal();
+            } else {
+                // User is signed out
+                currentUser = null;
+                document.getElementById('user-name').textContent = 'אורח';
+                document.getElementById('auth-container').classList.remove('logged-in');
+                learnedWords = new Set(); // Reset progress when logged out
+                loadFromLocalStorage(); // Load SRS data from localStorage
+                updateStats();
+            }
+        });
+
+        // Authentication functions
+        function login(email, password) {
+            const statusElement = document.getElementById('auth-status');
+            statusElement.textContent = 'מתחבר...';
+            
+            auth.signInWithEmailAndPassword(email, password)
+                .then((userCredential) => {
+                    // Login successful
+                    statusElement.textContent = 'התחברת בהצלחה!';
+                    statusElement.className = 'success-message';
+                })
+                .catch((error) => {
+                    // Handle errors
+                    statusElement.textContent = getHebrewErrorMessage(error.code);
+                    statusElement.className = 'error-message';
+            }
+        });
+        
+        // Main functionality
+        function flipCard() {
+            flashcard.classList.toggle('flipped');
+            
+            // Mark as learned when flipped to see translation
+            if (flashcard.classList.contains('flipped') && currentWords.length > 0) {
+                const currentWord = currentWords[currentIndex];
+                learnedWords.add(currentWord.id);
+                updateStats();
+                
+                // Save progress if logged in
+                if (currentUser) {
+                    saveUserProgress();
+                }
+            }
+        }
+        
+        function showNextCard() {
+            if (currentIndex < currentWords.length - 1) {
+                // First ensure card is showing front side
+                if (flashcard.classList.contains('flipped')) {
+                    // Add transition end listener to update card after flip completes
+                    const updateAfterFlip = function() {
+                        currentIndex++;
+                        updateCard();
+                        updateControls();
+                        flashcard.removeEventListener('transitionend', updateAfterFlip);
+                    };
+                    
+                    flashcard.addEventListener('transitionend', updateAfterFlip);
+                    flashcard.classList.remove('flipped');
+                } else {
+                    // If already showing front, just update normally
+                    currentIndex++;
+                    updateCard();
+                    updateControls();
+                }
+            }
+        }
+        
+        function showPreviousCard() {
+            if (currentIndex > 0) {
+                // First ensure card is showing front side
+                if (flashcard.classList.contains('flipped')) {
+                    // Add transition end listener to update card after flip completes
+                    const updateAfterFlip = function() {
+                        currentIndex--;
+                        updateCard();
+                        updateControls();
+                        flashcard.removeEventListener('transitionend', updateAfterFlip);
+                    };
+                    
+                    flashcard.addEventListener('transitionend', updateAfterFlip);
+                    flashcard.classList.remove('flipped');
+                } else {
+                    // If already showing front, just update normally
+                    currentIndex--;
+                    updateCard();
+                    updateControls();
+                }
+            }
+        }
+        
+        function updateCard() {
+            if (currentWords.length === 0) {
+                wordElement.textContent = 'אין מילים זמינות';
+                translationElement.textContent = '';
+                return;
+            }
+            
+            const currentWord = currentWords[currentIndex];
+            
+            // Reset card to front side
+            if (flashcard.classList.contains('flipped')) {
+                flashcard.classList.remove('flipped');
+            }
+            
+            wordElement.textContent = currentWord.arabic;
+            translationElement.textContent = currentWord.hebrew;
+        }
+        
+        function updateControls() {
+            prevButton.disabled = currentIndex === 0;
+            nextButton.disabled = currentIndex === currentWords.length - 1;
+        }
+        
+        function filterByCategory(category) {
+            // Update active button
+            document.querySelectorAll('.category-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            const categoryBtn = document.querySelector(`[data-category="${category}"]`);
+            if (categoryBtn) {
+                categoryBtn.classList.add('active');
+            }
+            
+            // Remember current category
+            currentCategory = category;
+            
+            if (category === 'all') {
+                currentWords = [...vocabulary];
+            } else {
+                currentWords = vocabulary.filter(word => word.category === category);
+            }
+            
+            // Shuffle the words for random order
+            currentWords = shuffleArray([...currentWords]);
+            
+            currentIndex = 0;
+            updateCard();
+            updateControls();
+            updateStats();
+        }
+        
+        function processVocabularyData(data) {
+            vocabulary = [];
+            categories = new Set();
+            
+            // Assume Excel has columns: Arabic, Hebrew, Category
+            data.forEach((row, index) => {
+                const keys = Object.keys(row);
+                let arabic = '', hebrew = '', category = 'כללי';
+                
+                // Try to intelligently identify the columns
+                keys.forEach(key => {
+                    const value = row[key];
+                    if (!value) return;
+                    
+                    // Assuming Arabic words will be in Arabic script
+                    // and translations in Hebrew script
+                    if (typeof value === 'string') {
+                        if (!arabic && (key.toLowerCase().includes('arab') || key.toLowerCase() === 'word')) {
+                            arabic = value;
+                        } else if (!hebrew && (key.toLowerCase().includes('heb') || key.toLowerCase() === 'translation')) {
+                            hebrew = value;
+                        } else if (!category && key.toLowerCase().includes('cat')) {
+                            category = value;
+                        } else if (!arabic) {
+                            arabic = value;
+                        } else if (!hebrew) {
+                            hebrew = value;
+                        }
+                    }
+                });
+                
+                // Fallback for simple two-column format
+                if (!arabic && keys.length >= 1) arabic = row[keys[0]];
+                if (!hebrew && keys.length >= 2) hebrew = row[keys[1]];
+                
+                // Use sheet name as category if provided and no category column exists
+                if (row.sheetCategory && (!category || category === 'כללי')) {
+                    category = row.sheetCategory;
+                }
+                
+                if (arabic && hebrew) {
+                    const wordId = index;
+                    vocabulary.push({
+                        id: wordId,
+                        arabic,
+                        hebrew,
+                        category
+                    });
+                    categories.add(category);
+                }
+            });
+            
+            console.log("Processed vocabulary data:", vocabulary.length, "words");
+            console.log("Categories:", Array.from(categories));
+            
+            // Initialize with all words
+            currentWords = [...vocabulary];
+            
+            // Shuffle the words for random order
+            currentWords = shuffleArray([...currentWords]);
+            
+            // Create category buttons
+            createCategoryButtons(Array.from(categories).sort());
+            
+            updateCard();
+            updateControls();
+            updateStats();
+        }
+        
+        function createCategoryButtons(categoryList) {
+            console.log("Creating category buttons:", categoryList);
+            categoriesContainer.innerHTML = '<button class="category-btn active" data-category="all">הכל</button>';
+            
+            categoryList.forEach(category => {
+                const button = document.createElement('button');
+                button.className = 'category-btn';
+                button.textContent = category;
+                button.dataset.category = category;
+                button.addEventListener('click', () => filterByCategory(category));
+                categoriesContainer.appendChild(button);
+            });
+            
+            // Add event listener to "All" button
+            const allButton = categoriesContainer.querySelector('[data-category="all"]');
+            if (allButton) {
+                allButton.addEventListener('click', () => filterByCategory('all'));
+            }
+        }
+        
+        function updateStats() {
+            const total = currentWords.length;
+            const learned = currentWords.filter(word => learnedWords.has(word.id)).length;
+            const remaining = total - learned;
+            const progress = total > 0 ? Math.round((learned / total) * 100) : 0;
+            
+            learnedCountElement.textContent = learned;
+            remainingCountElement.textContent = remaining;
+            totalCountElement.textContent = total;
+            progressBar.value = progress;
+            progressText.textContent = `${progress}%`;
+        }
+        
+        // Function to update SRS stats display
+        function updateSRSStats() {
+            // Only try to update if the elements exist
+            const dueCountElement = document.getElementById('due-count');
+            const newCountElement = document.getElementById('new-count');
+            const masteredCountElement = document.getElementById('mastered-count');
+            
+            if (dueCountElement && newCountElement && masteredCountElement) {
+                const dueWords = getDueWords().length;
+                
+                // New words - level 0
+                const newWords = Object.values(srsData).filter(s => s.level === 0).length;
+                
+                // Mastered words - level 5
+                const masteredWords = Object.values(srsData).filter(s => s.level === 5).length;
+                
+                dueCountElement.textContent = dueWords;
+                newCountElement.textContent = newWords;
+                masteredCountElement.textContent = masteredWords;
+            }
+        }
+        
+        // Function to update the SRS display for a specific word
+        function updateWordSRSDisplay(wordId) {
+            if (!srsContainer) return;
+            
+            const srs = srsData[wordId];
+            if (!srs) return;
+            
+            // Remove all existing level classes
+            for (let i = 0; i <= 5; i++) {
+                srsContainer.classList.remove(`level-${i}`);
+            }
+            
+            // Add the correct level class
+            srsContainer.classList.add(`level-${srs.level}`);
+            
+            // Update the text content
+            let statusText = '';
+            switch (srs.level) {
+                case 0:
+                    statusText = 'חדש';
+                    break;
+                case 1:
+                case 2:
+                    statusText = 'בלימוד';
+                    break;
+                case 3:
+                case 4:
+                    statusText = 'כמעט מוכר';
+                    break;
+                case 5:
+                    statusText = 'נלמד היטב';
+                    break;
+            }
+            
+            // Update the status text if the container has a child element for it
+            const statusTextElement = srsContainer.querySelector('.status-text');
+            if (statusTextElement) {
+                statusTextElement.textContent = statusText;
+            }
+            
+            // Calculate next review date
+            const nextReviewDate = srs.nextReview ? new Date(srs.nextReview) : new Date();
+            const today = new Date();
+            
+            let reviewText = '';
+            if (nextReviewDate <= today) {
+                reviewText = 'יש לסקור היום';
+            } else {
+                const diffTime = Math.abs(nextReviewDate - today);
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                reviewText = `סקירה הבאה בעוד ${diffDays} ימים`;
+            }
+            
+            // Update the review text if the container has a child element for it
+            const reviewTextElement = srsContainer.querySelector('.review-text');
+            if (reviewTextElement) {
+                reviewTextElement.textContent = reviewText;
+            }
+        }
+        
+        // Function to update all SRS-related displays
+        function updateSRSDisplay() {
+            updateSRSStats();
+            
+            // Update the current word's SRS display if applicable
+            if (currentWords.length > 0 && currentIndex < currentWords.length) {
+                const currentWord = currentWords[currentIndex];
+                updateWordSRSDisplay(currentWord.id);
+            }
+        }
+        
+        // Function to load the default Excel file
+        async function loadDefaultExcelFile() {
+            try {
+                // Path to your Excel file - update this to your actual filename
+                const excelFilePath = 'vocabulary.xlsx';
+                
+                dataInfo.textContent = 'טוען נתונים...';
+                statusIndicator.className = 'status-indicator loading';
+                
+                // Fetch the Excel file
+                const response = await fetch(excelFilePath);
+                if (!response.ok) {
+                    throw new Error(`נכשלה טעינת הקובץ: ${response.status} ${response.statusText}`);
+                }
+                
+                // Convert the response to an ArrayBuffer
+                const data = await response.arrayBuffer();
+                
+                // Process the Excel data
+                const workbook = XLSX.read(new Uint8Array(data), {type: 'array'});
+                
+                // Get all sheet names
+                const sheetNames = workbook.SheetNames;
+                console.log("Excel sheet names:", sheetNames);
+                
+                // Filter sheets to only those containing 'P'
+                const filteredSheetNames = sheetNames.filter(sheetName => sheetName.includes('P'));
+                console.log("Filtered sheet names:", filteredSheetNames);
+                
+                if (filteredSheetNames.length === 0) {
+                    // No sheets with 'P' found, use all sheets
+                    console.log("No sheets with 'P' found, using all sheets");
+                    
+                    let allData = [];
+                    sheetData = {}; // Reset sheet data
+                    
+                    // Process each sheet
+                    sheetNames.forEach(sheetName => {
+                        const worksheet = workbook.Sheets[sheetName];
+                        
+                        // Convert to JSON
+                        const jsonData = XLSX.utils.sheet_to_json(worksheet);
+                        console.log(`Sheet ${sheetName}: ${jsonData.length} entries`);
+                        
+                        // Store data by sheet name
+                        sheetData[sheetName] = jsonData;
+                        
+                        // Add sheet name as category if not specified
+                        jsonData.forEach(item => {
+                            if (!item.category && !item.Category) {
+                                item.sheetCategory = sheetName;
+                            }
+                        });
+                        
+                        allData = [...allData, ...jsonData];
+                    });
+                    
+                    processVocabularyData(allData);
+                    
+                    // Update status to success
+                    statusIndicator.className = 'status-indicator success';
+                    dataInfo.textContent = `נטענו ${allData.length} מילים בהצלחה (כל הגיליונות)`;
+                    
+                    // Create a detailed sheet information display
+                    sheetsInfo.innerHTML = `
+                        <div>נטענו נתונים מ-${sheetNames.length} גיליונות:</div>
+                        <div class="sheet-list">
+                            ${sheetNames.map(sheet => `<span class="sheet-badge">${sheet}</span>`).join('')}
+                        </div>
+                    `;
+                } else {
+                    // Process filtered sheets
+                    let allData = [];
+                    sheetData = {}; // Reset sheet data
+                    
+                    // Process each filtered sheet
+                    filteredSheetNames.forEach(sheetName => {
+                        const worksheet = workbook.Sheets[sheetName];
+                        
+                        // Convert to JSON
+                        const jsonData = XLSX.utils.sheet_to_json(worksheet);
+                        console.log(`Sheet ${sheetName}: ${jsonData.length} entries`);
+                        
+                        // Create display name by removing only the letter 'P'
+                        let displayName = sheetName.replace(/P/g, '');
+                        console.log(`Display name for ${sheetName}: ${displayName}`);
+                        
+                        // Store data by sheet name
+                        sheetData[sheetName] = jsonData;
+                        
+                        // Add modified sheet name as category if not specified
+                        jsonData.forEach(item => {
+                            if (!item.category && !item.Category) {
+                                item.sheetCategory = displayName; // Use the name without 'P'
+                            }
+                        });
+                        
+                        allData = [...allData, ...jsonData];
+                    });
+                    
+                    console.log("Total data entries:", allData.length);
+                    processVocabularyData(allData);
+                    
+                    // Update status to success
+                    statusIndicator.className = 'status-indicator success';
+                    dataInfo.textContent = `נטענו ${allData.length} מילים בהצלחה`;
+                    
+                    // Get display names for the badges (without 'P')
+                    const displayNames = filteredSheetNames.map(sheetName => {
+                        return sheetName.replace(/P/g, '');
+                    });
+                    
+                    // Create a detailed sheet information display with modified names
+                    sheetsInfo.innerHTML = `
+                        <div>נטענו נתונים מ-${filteredSheetNames.length} גיליונות:</div>
+                        <div class="sheet-list">
+                            ${displayNames.map(sheet => `<span class="sheet-badge">${sheet}</span>`).join('')}
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Error loading default Excel file:', error);
+                statusIndicator.className = 'status-indicator error';
+                dataInfo.textContent = `שגיאה בטעינת קובץ ברירת המחדל: ${error.message}`;
+                sheetsInfo.innerHTML = '';
+            }
+        }
+        
+        // Initialize SRS
+        function initializeSRS() {
+            console.log("Initializing SRS system");
+            
+            // Add event listeners for SRS buttons
+            if (studyModeButton && reviewModeButton) {
+                studyModeButton.addEventListener('click', disableReviewMode);
+                reviewModeButton.addEventListener('click', enableReviewMode);
+            }
+            
+            if (easyButton && hardButton) {
+                easyButton.addEventListener('click', () => {
+                    if (currentWords.length === 0) return;
+                    const currentWord = currentWords[currentIndex];
+                    updateSRS(currentWord.id, true); // Mark as correct/easy
+                    updateWordSRSDisplay(currentWord.id);
+                    showNextCard();
+                });
+                
+                hardButton.addEventListener('click', () => {
+                    if (currentWords.length === 0) return;
+                    const currentWord = currentWords[currentIndex];
+                    updateSRS(currentWord.id, false); // Mark as incorrect/hard
+                    updateWordSRSDisplay(currentWord.id);
+                    showNextCard();
+                });
+            }
+            
+            // Update stats display
+            updateSRSStats();
+        }
+
+        // NEW: Initialize the mode buttons
+        function initializeModeButtons() {
+            // Flashcard mode button
+            flashcardModeButton.addEventListener('click', function() {
+                switchToMode('flashcard');
+            });
+            
+            // Test mode button
+            testModeButton.addEventListener('click', function() {
+                switchToMode('test');
+            });
+            
+            // Reset progress button
+            resetProgressBtn.addEventListener('click', function() {
+                confirmResetContainer.style.display = 'block';
+            });
+            
+            // Confirm reset - Yes
+            confirmResetYes.addEventListener('click', function() {
+                resetUserProgress();
+            });
+            
+            // Confirm reset - No
+            confirmResetNo.addEventListener('click', function() {
+                confirmResetContainer.style.display = 'none';
+            });
+        }
+
+        // Load data and set up buttons
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log("DOM loaded, initializing app");
+            
+            // Load SRS data
+            loadFromLocalStorage();
+            
+            // Set up button click handlers
+            flashcard.onclick = flipCard;
+            flipButton.onclick = flipCard;
+            prevButton.onclick = showPreviousCard;
+            nextButton.onclick = showNextCard;
+            
+            // Load data
+            loadDefaultExcelFile();
+            
+            // Initialize after a short delay
+            setTimeout(function() {
+                // Initialize mode buttons
+                initializeModeButtons();
+                
+                // Start in flashcard mode
+                switchToMode('flashcard');
+            }, 1000);
+        });
+    </script>
+</body>
+</html>
+                });
+        }
+
+        function register(email, password, passwordConfirm) {
+            const statusElement = document.getElementById('auth-status');
+            
+            // Validate passwords match
+            if (password !== passwordConfirm) {
+                statusElement.textContent = 'הסיסמאות אינן תואמות';
+                statusElement.className = 'error-message';
+                return;
+            }
+            
+            statusElement.textContent = 'יוצר חשבון...';
+            
+            auth.createUserWithEmailAndPassword(email, password)
+                .then((userCredential) => {
+                    // Registration successful
+                    statusElement.textContent = 'החשבון נוצר בהצלחה!';
+                    statusElement.className = 'success-message';
+                    
+                    // Create initial user data
+                    const user = userCredential.user;
+                    return db.collection('users').doc(user.uid).set({
+                        email: user.email,
+                        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                        progress: {},
+                        srs: {} // Initialize SRS field
+                    });
+                })
+                .catch((error) => {
+                    // Handle errors
+                    statusElement.textContent = getHebrewErrorMessage(error.code);
+                    statusElement.className = 'error-message';
+                });
+        }
+
+        function logout() {
+            auth.signOut()
+                .then(() => {
+                    // Sign-out successful
+                    learnedWords = new Set(); // Reset progress when logged out
+                    updateStats();
+                })
+                .catch((error) => {
+                    console.error('Logout error:', error);
+                });
+        }
+
+        // Load user progress from Firestore
+        function loadUserProgress() {
+            if (!currentUser) return;
+            
+            db.collection('users').doc(currentUser.uid).get()
+                .then((doc) => {
+                    if (doc.exists && doc.data().progress) {
+                        userProgress = doc.data().progress;
+                        
+                        // Restore learned words from saved progress
+                        learnedWords = new Set();
+                        Object.keys(userProgress).forEach(wordId => {
+                            if (userProgress[wordId].learned) {
+                                learnedWords.add(parseInt(wordId));
+                            }
+                        });
+                        
+                        updateStats();
+                    }
+                })
+                .catch((error) => {
+                    console.error('Error loading user progress:', error);
+                });
+        }
+
+        // Save user progress to Firestore
+        function saveUserProgress() {
+            if (!currentUser) return;
+            
+            // Create progress object
+            const progressData = {};
+            
+            // Save the learned state of each word
+            learnedWords.forEach(wordId => {
+                progressData[wordId] = {
+                    learned: true,
+                    lastSeen: firebase.firestore.FieldValue.serverTimestamp()
+                };
+            });
+            
+            // Save to Firestore
+            db.collection('users').doc(currentUser.uid).update({
+                progress: progressData,
+                lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+            })
+            .then(() => {
+                console.log('Progress saved successfully');
+                // Show save indicator if you want
+            })
+            .catch((error) => {
+                console.error('Error saving progress:', error);
+            });
+        }
+
+        // Show auth modal
+        function showAuthModal(mode = 'login') {
+            const modal = document.getElementById('auth-modal');
+            modal.style.display = 'flex';
+            
+            // Set the active tab
+            document.querySelectorAll('.auth-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.getElementById(`${mode}-tab`).classList.add('active');
+            
+            // Show the active form
+            document.querySelectorAll('.auth-form').forEach(form => {
+                form.style.display = 'none';
+            });
+            document.getElementById(`${mode}-form`).style.display = 'block';
+            
+            // Clear previous status messages
+            document.getElementById('auth-status').textContent = '';
+        }
+
+        // Hide auth modal
+        function hideAuthModal() {
+            const modal = document.getElementById('auth-modal');
+            modal.style.display = 'none';
+        }
+
+        // Switch between login and register forms
+        function switchAuthForm(mode) {
+            showAuthModal(mode);
+        }
+
+        // Get Hebrew error messages for firebase auth errors
+        function getHebrewErrorMessage(errorCode) {
+            const errorMessages = {
+                'auth/email-already-in-use': 'כתובת האימייל כבר בשימוש',
+                'auth/invalid-email': 'כתובת אימייל לא תקינה',
+                'auth/weak-password': 'הסיסמה חלשה מדי',
+                'auth/user-not-found': 'משתמש לא נמצא',
+                'auth/wrong-password': 'סיסמה שגויה',
+                'auth/too-many-requests': 'יותר מדי נסיונות התחברות, נסה שוב מאוחר יותר'
+            };
+            
+            return errorMessages[errorCode] || 'אירעה שגיאה. נסה שוב.';
+        }
+        
+        // Event listeners for authentication
+        document.getElementById('login-button').addEventListener('click', function() {
+            showAuthModal('login');
+        });
+
+        document.getElementById('register-button').addEventListener('click', function() {
+            showAuthModal('register');
+        });
+
+        document.getElementById('guest-login-button').addEventListener('click', function() {
+            showAuthModal('login');
+        });
+
+        document.getElementById('logout-button').addEventListener('click', function() {
+            logout();
+        });
+
+        document.getElementById('submit-login').addEventListener('click', function() {
+            const email = document.getElementById('login-email').value;
+            const password = document.getElementById('login-password').value;
+            
+            if (email && password) {
+                login(email, password);
+            } else {
+                const statusElement = document.getElementById('auth-status');
+                statusElement.textContent = 'אנא הזן אימייל וסיסמה';
+                statusElement.className = 'error-message';
+            }
+        });
+
+        document.getElementById('submit-register').addEventListener('click', function() {
+            const email = document.getElementById('register-email').value;
+            const password = document.getElementById('register-password').value;
+            const passwordConfirm = document.getElementById('register-password-confirm').value;
+            
+            if (email && password && passwordConfirm) {
+                register(email, password, passwordConfirm);
+            } else {
+                const statusElement = document.getElementById('auth-status');
+                statusElement.textContent = 'אנא מלא את כל השדות';
+                statusElement.className = 'error-message';
         .container {
             max-width: 800px;
             margin: 0 auto;
@@ -1300,6 +2031,9 @@
                 // Mark this word as learned
                 learnedWords.add(parseInt(arabicId));
                 
+                // Update SRS data - correct match
+                updateSRS(arabicId, true);
+                
                 // Update internal match count
                 matchedPairs++;
                 
@@ -1332,7 +2066,11 @@
                     }, 500);
                 }
             } else {
-                // Not a match
+                // Not a match - mark both words as difficult in SRS
+                updateSRS(arabicId, false);
+                updateSRS(hebrewId, false);
+                
+                // Display feedback
                 testFeedback.textContent = 'לא התאמה, נסה שוב';
                 testFeedback.style.color = '#e74c3c';
                 
@@ -1345,707 +2083,3 @@
                 }, 1000);
             }
         }
-        
-        // Reset user progress
-        function resetUserProgress() {
-            if (!currentUser) return;
-            
-            try {
-                // Clear learned words
-                learnedWords = new Set();
-                
-                // Reset SRS data
-                srsData = {};
-                
-                // Update Firebase
-                db.collection('users').doc(currentUser.uid).update({
-                    progress: {},
-                    srs: {},
-                    lastReset: firebase.firestore.FieldValue.serverTimestamp()
-                })
-                .then(() => {
-                    console.log('Progress reset successfully');
-                    
-                    // Hide confirmation dialog
-                    confirmResetContainer.style.display = 'none';
-                    
-                    // Update UI
-                    updateStats();
-                    updateSRSDisplay();
-                    if (flashcardContainer.style.display !== 'none') {
-                        updateCard();
-                    }
-                    
-                    // Show success message
-                    alert('ההתקדמות שלך אופסה בהצלחה.');
-                })
-                .catch((error) => {
-                    console.error('Error resetting progress:', error);
-                    alert('שגיאה באיפוס ההתקדמות. נסה שוב מאוחר יותר.');
-                });
-            } catch (error) {
-                console.error('Error in resetUserProgress:', error);
-            }
-        }
-        
-        // Auth state observer
-        auth.onAuthStateChanged((user) => {
-            if (user) {
-                // User is signed in
-                currentUser = user;
-                document.getElementById('user-name').textContent = user.email;
-                document.getElementById('auth-container').classList.add('logged-in');
-                loadUserProgress();
-                loadSRSFromFirebase(); // Load SRS data from Firebase
-                hideAuthModal();
-            } else {
-                // User is signed out
-                currentUser = null;
-                document.getElementById('user-name').textContent = 'אורח';
-                document.getElementById('auth-container').classList.remove('logged-in');
-                learnedWords = new Set(); // Reset progress when logged out
-                loadFromLocalStorage(); // Load SRS data from localStorage
-                updateStats();
-            }
-        });
-
-        // Authentication functions
-        function login(email, password) {
-            const statusElement = document.getElementById('auth-status');
-            statusElement.textContent = 'מתחבר...';
-            
-            auth.signInWithEmailAndPassword(email, password)
-                .then((userCredential) => {
-                    // Login successful
-                    statusElement.textContent = 'התחברת בהצלחה!';
-                    statusElement.className = 'success-message';
-                })
-                .catch((error) => {
-                    // Handle errors
-                    statusElement.textContent = getHebrewErrorMessage(error.code);
-                    statusElement.className = 'error-message';
-                });
-        }
-
-        function register(email, password, passwordConfirm) {
-            const statusElement = document.getElementById('auth-status');
-            
-            // Validate passwords match
-            if (password !== passwordConfirm) {
-                statusElement.textContent = 'הסיסמאות אינן תואמות';
-                statusElement.className = 'error-message';
-                return;
-            }
-            
-            statusElement.textContent = 'יוצר חשבון...';
-            
-            auth.createUserWithEmailAndPassword(email, password)
-                .then((userCredential) => {
-                    // Registration successful
-                    statusElement.textContent = 'החשבון נוצר בהצלחה!';
-                    statusElement.className = 'success-message';
-                    
-                    // Create initial user data
-                    const user = userCredential.user;
-                    return db.collection('users').doc(user.uid).set({
-                        email: user.email,
-                        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                        progress: {},
-                        srs: {} // Initialize SRS field
-                    });
-                })
-                .catch((error) => {
-                    // Handle errors
-                    statusElement.textContent = getHebrewErrorMessage(error.code);
-                    statusElement.className = 'error-message';
-                });
-        }
-
-        function logout() {
-            auth.signOut()
-                .then(() => {
-                    // Sign-out successful
-                    learnedWords = new Set(); // Reset progress when logged out
-                    updateStats();
-                })
-                .catch((error) => {
-                    console.error('Logout error:', error);
-                });
-        }
-
-        // Load user progress from Firestore
-        function loadUserProgress() {
-            if (!currentUser) return;
-            
-            db.collection('users').doc(currentUser.uid).get()
-                .then((doc) => {
-                    if (doc.exists && doc.data().progress) {
-                        userProgress = doc.data().progress;
-                        
-                        // Restore learned words from saved progress
-                        learnedWords = new Set();
-                        Object.keys(userProgress).forEach(wordId => {
-                            if (userProgress[wordId].learned) {
-                                learnedWords.add(parseInt(wordId));
-                            }
-                        });
-                        
-                        updateStats();
-                    }
-                })
-                .catch((error) => {
-                    console.error('Error loading user progress:', error);
-                });
-        }
-
-        // Save user progress to Firestore
-        function saveUserProgress() {
-            if (!currentUser) return;
-            
-            // Create progress object
-            const progressData = {};
-            
-            // Save the learned state of each word
-            learnedWords.forEach(wordId => {
-                progressData[wordId] = {
-                    learned: true,
-                    lastSeen: firebase.firestore.FieldValue.serverTimestamp()
-                };
-            });
-            
-            // Save to Firestore
-            db.collection('users').doc(currentUser.uid).update({
-                progress: progressData,
-                lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
-            })
-            .then(() => {
-                console.log('Progress saved successfully');
-                // Show save indicator if you want
-            })
-            .catch((error) => {
-                console.error('Error saving progress:', error);
-            });
-        }
-
-        // Show auth modal
-        function showAuthModal(mode = 'login') {
-            const modal = document.getElementById('auth-modal');
-            modal.style.display = 'flex';
-            
-            // Set the active tab
-            document.querySelectorAll('.auth-tab').forEach(tab => {
-                tab.classList.remove('active');
-            });
-            document.getElementById(`${mode}-tab`).classList.add('active');
-            
-            // Show the active form
-            document.querySelectorAll('.auth-form').forEach(form => {
-                form.style.display = 'none';
-            });
-            document.getElementById(`${mode}-form`).style.display = 'block';
-            
-            // Clear previous status messages
-            document.getElementById('auth-status').textContent = '';
-        }
-
-        // Hide auth modal
-        function hideAuthModal() {
-            const modal = document.getElementById('auth-modal');
-            modal.style.display = 'none';
-        }
-
-        // Switch between login and register forms
-        function switchAuthForm(mode) {
-            showAuthModal(mode);
-        }
-
-        // Get Hebrew error messages for firebase auth errors
-        function getHebrewErrorMessage(errorCode) {
-            const errorMessages = {
-                'auth/email-already-in-use': 'כתובת האימייל כבר בשימוש',
-                'auth/invalid-email': 'כתובת אימייל לא תקינה',
-                'auth/weak-password': 'הסיסמה חלשה מדי',
-                'auth/user-not-found': 'משתמש לא נמצא',
-                'auth/wrong-password': 'סיסמה שגויה',
-                'auth/too-many-requests': 'יותר מדי נסיונות התחברות, נסה שוב מאוחר יותר'
-            };
-            
-            return errorMessages[errorCode] || 'אירעה שגיאה. נסה שוב.';
-        }
-        
-        // Event listeners for authentication
-        document.getElementById('login-button').addEventListener('click', function() {
-            showAuthModal('login');
-        });
-
-        document.getElementById('register-button').addEventListener('click', function() {
-            showAuthModal('register');
-        });
-
-        document.getElementById('guest-login-button').addEventListener('click', function() {
-            showAuthModal('login');
-        });
-
-        document.getElementById('logout-button').addEventListener('click', function() {
-            logout();
-        });
-
-        document.getElementById('submit-login').addEventListener('click', function() {
-            const email = document.getElementById('login-email').value;
-            const password = document.getElementById('login-password').value;
-            
-            if (email && password) {
-                login(email, password);
-            } else {
-                const statusElement = document.getElementById('auth-status');
-                statusElement.textContent = 'אנא הזן אימייל וסיסמה';
-                statusElement.className = 'error-message';
-            }
-        });
-
-        document.getElementById('submit-register').addEventListener('click', function() {
-            const email = document.getElementById('register-email').value;
-            const password = document.getElementById('register-password').value;
-            const passwordConfirm = document.getElementById('register-password-confirm').value;
-            
-            if (email && password && passwordConfirm) {
-                register(email, password, passwordConfirm);
-            } else {
-                const statusElement = document.getElementById('auth-status');
-                statusElement.textContent = 'אנא מלא את כל השדות';
-                statusElement.className = 'error-message';
-            }
-        });
-        
-        // Main functionality
-        function flipCard() {
-            flashcard.classList.toggle('flipped');
-            
-            // Mark as learned when flipped to see translation
-            if (flashcard.classList.contains('flipped') && currentWords.length > 0) {
-                const currentWord = currentWords[currentIndex];
-                learnedWords.add(currentWord.id);
-                updateStats();
-                
-                // Save progress if logged in
-                if (currentUser) {
-                    saveUserProgress();
-                }
-            }
-        }
-        
-        function showNextCard() {
-            if (currentIndex < currentWords.length - 1) {
-                // First ensure card is showing front side
-                if (flashcard.classList.contains('flipped')) {
-                    // Add transition end listener to update card after flip completes
-                    const updateAfterFlip = function() {
-                        currentIndex++;
-                        updateCard();
-                        updateControls();
-                        flashcard.removeEventListener('transitionend', updateAfterFlip);
-                    };
-                    
-                    flashcard.addEventListener('transitionend', updateAfterFlip);
-                    flashcard.classList.remove('flipped');
-                } else {
-                    // If already showing front, just update normally
-                    currentIndex++;
-                    updateCard();
-                    updateControls();
-                }
-            }
-        }
-        
-        function showPreviousCard() {
-            if (currentIndex > 0) {
-                // First ensure card is showing front side
-                if (flashcard.classList.contains('flipped')) {
-                    // Add transition end listener to update card after flip completes
-                    const updateAfterFlip = function() {
-                        currentIndex--;
-                        updateCard();
-                        updateControls();
-                        flashcard.removeEventListener('transitionend', updateAfterFlip);
-                    };
-                    
-                    flashcard.addEventListener('transitionend', updateAfterFlip);
-                    flashcard.classList.remove('flipped');
-                } else {
-                    // If already showing front, just update normally
-                    currentIndex--;
-                    updateCard();
-                    updateControls();
-                }
-            }
-        }
-        
-        function updateCard() {
-            if (currentWords.length === 0) {
-                wordElement.textContent = 'אין מילים זמינות';
-                translationElement.textContent = '';
-                return;
-            }
-            
-            const currentWord = currentWords[currentIndex];
-            
-            // Reset card to front side
-            if (flashcard.classList.contains('flipped')) {
-                flashcard.classList.remove('flipped');
-            }
-            
-            wordElement.textContent = currentWord.arabic;
-            translationElement.textContent = currentWord.hebrew;
-        }
-        
-        function updateControls() {
-            prevButton.disabled = currentIndex === 0;
-            nextButton.disabled = currentIndex === currentWords.length - 1;
-        }
-        
-        function filterByCategory(category) {
-            // Update active button
-            document.querySelectorAll('.category-btn').forEach(btn => {
-                btn.classList.remove('active');
-            });
-            const categoryBtn = document.querySelector(`[data-category="${category}"]`);
-            if (categoryBtn) {
-                categoryBtn.classList.add('active');
-            }
-            
-            // Remember current category
-            currentCategory = category;
-            
-            if (category === 'all') {
-                currentWords = [...vocabulary];
-            } else {
-                currentWords = vocabulary.filter(word => word.category === category);
-            }
-            
-            // Shuffle the words for random order
-            currentWords = shuffleArray([...currentWords]);
-            
-            currentIndex = 0;
-            updateCard();
-            updateControls();
-            updateStats();
-        }
-        
-        function processVocabularyData(data) {
-            vocabulary = [];
-            categories = new Set();
-            
-            // Assume Excel has columns: Arabic, Hebrew, Category
-            data.forEach((row, index) => {
-                const keys = Object.keys(row);
-                let arabic = '', hebrew = '', category = 'כללי';
-                
-                // Try to intelligently identify the columns
-                keys.forEach(key => {
-                    const value = row[key];
-                    if (!value) return;
-                    
-                    // Assuming Arabic words will be in Arabic script
-                    // and translations in Hebrew script
-                    if (typeof value === 'string') {
-                        if (!arabic && (key.toLowerCase().includes('arab') || key.toLowerCase() === 'word')) {
-                            arabic = value;
-                        } else if (!hebrew && (key.toLowerCase().includes('heb') || key.toLowerCase() === 'translation')) {
-                            hebrew = value;
-                        } else if (!category && key.toLowerCase().includes('cat')) {
-                            category = value;
-                        } else if (!arabic) {
-                            arabic = value;
-                        } else if (!hebrew) {
-                            hebrew = value;
-                        }
-                    }
-                });
-                
-                // Fallback for simple two-column format
-                if (!arabic && keys.length >= 1) arabic = row[keys[0]];
-                if (!hebrew && keys.length >= 2) hebrew = row[keys[1]];
-                
-                // Use sheet name as category if provided and no category column exists
-                if (row.sheetCategory && (!category || category === 'כללי')) {
-                    category = row.sheetCategory;
-                }
-                
-                if (arabic && hebrew) {
-                    const wordId = index;
-                    vocabulary.push({
-                        id: wordId,
-                        arabic,
-                        hebrew,
-                        category
-                    });
-                    categories.add(category);
-                }
-            });
-            
-            console.log("Processed vocabulary data:", vocabulary.length, "words");
-            console.log("Categories:", Array.from(categories));
-            
-            // Initialize with all words
-            currentWords = [...vocabulary];
-            
-            // Shuffle the words for random order
-            currentWords = shuffleArray([...currentWords]);
-            
-            // Create category buttons
-            createCategoryButtons(Array.from(categories).sort());
-            
-            updateCard();
-            updateControls();
-            updateStats();
-        }
-        
-        function createCategoryButtons(categoryList) {
-            console.log("Creating category buttons:", categoryList);
-            categoriesContainer.innerHTML = '<button class="category-btn active" data-category="all">הכל</button>';
-            
-            categoryList.forEach(category => {
-                const button = document.createElement('button');
-                button.className = 'category-btn';
-                button.textContent = category;
-                button.dataset.category = category;
-                button.addEventListener('click', () => filterByCategory(category));
-                categoriesContainer.appendChild(button);
-            });
-            
-            // Add event listener to "All" button
-            const allButton = categoriesContainer.querySelector('[data-category="all"]');
-            if (allButton) {
-                allButton.addEventListener('click', () => filterByCategory('all'));
-            }
-        }
-        
-        function updateStats() {
-            const total = currentWords.length;
-            const learned = currentWords.filter(word => learnedWords.has(word.id)).length;
-            const remaining = total - learned;
-            const progress = total > 0 ? Math.round((learned / total) * 100) : 0;
-            
-            learnedCountElement.textContent = learned;
-            remainingCountElement.textContent = remaining;
-            totalCountElement.textContent = total;
-            progressBar.value = progress;
-            progressText.textContent = `${progress}%`;
-        }
-        
-        // Function to load the default Excel file
-        async function loadDefaultExcelFile() {
-            try {
-                // Path to your Excel file - update this to your actual filename
-                const excelFilePath = 'vocabulary.xlsx';
-                
-                dataInfo.textContent = 'טוען נתונים...';
-                statusIndicator.className = 'status-indicator loading';
-                
-                // Fetch the Excel file
-                const response = await fetch(excelFilePath);
-                if (!response.ok) {
-                    throw new Error(`נכשלה טעינת הקובץ: ${response.status} ${response.statusText}`);
-                }
-                
-                // Convert the response to an ArrayBuffer
-                const data = await response.arrayBuffer();
-                
-                // Process the Excel data
-                const workbook = XLSX.read(new Uint8Array(data), {type: 'array'});
-                
-                // Get all sheet names
-                const sheetNames = workbook.SheetNames;
-                console.log("Excel sheet names:", sheetNames);
-                
-                // Filter sheets to only those containing 'P'
-                const filteredSheetNames = sheetNames.filter(sheetName => sheetName.includes('P'));
-                console.log("Filtered sheet names:", filteredSheetNames);
-                
-                if (filteredSheetNames.length === 0) {
-                    // No sheets with 'P' found, use all sheets
-                    console.log("No sheets with 'P' found, using all sheets");
-                    
-                    let allData = [];
-                    sheetData = {}; // Reset sheet data
-                    
-                    // Process each sheet
-                    sheetNames.forEach(sheetName => {
-                        const worksheet = workbook.Sheets[sheetName];
-                        
-                        // Convert to JSON
-                        const jsonData = XLSX.utils.sheet_to_json(worksheet);
-                        console.log(`Sheet ${sheetName}: ${jsonData.length} entries`);
-                        
-                        // Store data by sheet name
-                        sheetData[sheetName] = jsonData;
-                        
-                        // Add sheet name as category if not specified
-                        jsonData.forEach(item => {
-                            if (!item.category && !item.Category) {
-                                item.sheetCategory = sheetName;
-                            }
-                        });
-                        
-                        allData = [...allData, ...jsonData];
-                    });
-                    
-                    processVocabularyData(allData);
-                    
-                    // Update status to success
-                    statusIndicator.className = 'status-indicator success';
-                    dataInfo.textContent = `נטענו ${allData.length} מילים בהצלחה (כל הגיליונות)`;
-                    
-                    // Create a detailed sheet information display
-                    sheetsInfo.innerHTML = `
-                        <div>נטענו נתונים מ-${sheetNames.length} גיליונות:</div>
-                        <div class="sheet-list">
-                            ${sheetNames.map(sheet => `<span class="sheet-badge">${sheet}</span>`).join('')}
-                        </div>
-                    `;
-                } else {
-                    // Process filtered sheets
-                    let allData = [];
-                    sheetData = {}; // Reset sheet data
-                    
-                    // Process each filtered sheet
-                    filteredSheetNames.forEach(sheetName => {
-                        const worksheet = workbook.Sheets[sheetName];
-                        
-                        // Convert to JSON
-                        const jsonData = XLSX.utils.sheet_to_json(worksheet);
-                        console.log(`Sheet ${sheetName}: ${jsonData.length} entries`);
-                        
-                        // Create display name by removing only the letter 'P'
-                        let displayName = sheetName.replace(/P/g, '');
-                        console.log(`Display name for ${sheetName}: ${displayName}`);
-                        
-                        // Store data by sheet name
-                        sheetData[sheetName] = jsonData;
-                        
-                        // Add modified sheet name as category if not specified
-                        jsonData.forEach(item => {
-                            if (!item.category && !item.Category) {
-                                item.sheetCategory = displayName; // Use the name without 'P'
-                            }
-                        });
-                        
-                        allData = [...allData, ...jsonData];
-                    });
-                    
-                    console.log("Total data entries:", allData.length);
-                    processVocabularyData(allData);
-                    
-                    // Update status to success
-                    statusIndicator.className = 'status-indicator success';
-                    dataInfo.textContent = `נטענו ${allData.length} מילים בהצלחה`;
-                    
-                    // Get display names for the badges (without 'P')
-                    const displayNames = filteredSheetNames.map(sheetName => {
-                        return sheetName.replace(/P/g, '');
-                    });
-                    
-                    // Create a detailed sheet information display with modified names
-                    sheetsInfo.innerHTML = `
-                        <div>נטענו נתונים מ-${filteredSheetNames.length} גיליונות:</div>
-                        <div class="sheet-list">
-                            ${displayNames.map(sheet => `<span class="sheet-badge">${sheet}</span>`).join('')}
-                        </div>
-                    `;
-                }
-            } catch (error) {
-                console.error('Error loading default Excel file:', error);
-                statusIndicator.className = 'status-indicator error';
-                dataInfo.textContent = `שגיאה בטעינת קובץ ברירת המחדל: ${error.message}`;
-                sheetsInfo.innerHTML = '';
-            }
-        }
-        
-        // Initialize SRS
-        function initializeSRS() {
-            console.log("Initializing SRS system");
-            
-            // Add event listeners for SRS buttons
-            if (studyModeButton && reviewModeButton) {
-                studyModeButton.addEventListener('click', disableReviewMode);
-                reviewModeButton.addEventListener('click', enableReviewMode);
-            }
-            
-            if (easyButton && hardButton) {
-                easyButton.addEventListener('click', () => {
-                    if (currentWords.length === 0) return;
-                    const currentWord = currentWords[currentIndex];
-                    updateSRS(currentWord.id, true); // Mark as correct/easy
-                    updateWordSRSDisplay(currentWord.id);
-                    showNextCard();
-                });
-                
-                hardButton.addEventListener('click', () => {
-                    if (currentWords.length === 0) return;
-                    const currentWord = currentWords[currentIndex];
-                    updateSRS(currentWord.id, false); // Mark as incorrect/hard
-                    updateWordSRSDisplay(currentWord.id);
-                    showNextCard();
-                });
-            }
-            
-            // Update stats display
-            updateSRSStats();
-        }
-
-        // NEW: Initialize the mode buttons
-        function initializeModeButtons() {
-            // Flashcard mode button
-            flashcardModeButton.addEventListener('click', function() {
-                switchToMode('flashcard');
-            });
-            
-            // Test mode button
-            testModeButton.addEventListener('click', function() {
-                switchToMode('test');
-            });
-            
-            // Reset progress button
-            resetProgressBtn.addEventListener('click', function() {
-                confirmResetContainer.style.display = 'block';
-            });
-            
-            // Confirm reset - Yes
-            confirmResetYes.addEventListener('click', function() {
-                resetUserProgress();
-            });
-            
-            // Confirm reset - No
-            confirmResetNo.addEventListener('click', function() {
-                confirmResetContainer.style.display = 'none';
-            });
-        }
-
-        // Load data and set up buttons
-        document.addEventListener('DOMContentLoaded', function() {
-            console.log("DOM loaded, initializing app");
-            
-            // Load SRS data
-            loadFromLocalStorage();
-            
-            // Set up button click handlers
-            flashcard.onclick = flipCard;
-            flipButton.onclick = flipCard;
-            prevButton.onclick = showPreviousCard;
-            nextButton.onclick = showNextCard;
-            
-            // Load data
-            loadDefaultExcelFile();
-            
-            // Initialize after a short delay
-            setTimeout(function() {
-                // Initialize mode buttons
-                initializeModeButtons();
-                
-                // Start in flashcard mode
-                switchToMode('flashcard');
-            }, 1000);
-        });
-    </script>
-</body>
-</html>
