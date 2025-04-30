@@ -1,4 +1,4 @@
-        // Check if the selected items match
+// Check if the selected items match
         function checkForMatch() {
             const arabicId = selectedArabicItem.dataset.id;
             const hebrewId = selectedHebrewItem.dataset.id;
@@ -1166,35 +1166,64 @@
                 availableWords = vocabulary;
             }
             
-            // Get words due for review based on SRS
-            const dueWords = availableWords.filter(word => isDueForReview(word.id));
+            // Keep track of previously shown words to increase variety
+            let previouslyShownWords = JSON.parse(localStorage.getItem('previouslyShownMatchingWords')) || [];
             
-            // If we have enough due words, prioritize them
-            if (dueWords.length >= TEST_PAIR_COUNT) {
-                // Prioritize the due words using SRS data
+            // Filter out recently shown words if we have enough options
+            let remainingWords = availableWords.filter(word => !previouslyShownWords.includes(word.id));
+            
+            // If we have too few remaining words, reset the previously shown list
+            if (remainingWords.length < TEST_PAIR_COUNT) {
+                remainingWords = availableWords;
+                previouslyShownWords = [];
+            }
+            
+            // Get words due for review based on SRS
+            const dueWords = remainingWords.filter(word => isDueForReview(word.id));
+            
+            // Prepare final words list
+            let finalWords = [];
+            
+            // If we have enough due words, use a mix of due words and random words for variety
+            if (dueWords.length >= TEST_PAIR_COUNT / 2) {
+                // Use some due words (weighted by SRS priority)
                 const prioritizedDueWords = prioritizeMatchingWords(dueWords);
-                testWords = prioritizedDueWords.slice(0, TEST_PAIR_COUNT);
-            } else {
-                // Not enough due words, use some due words and some random words
-                const prioritizedDueWords = prioritizeMatchingWords(dueWords);
-                const nonDueWords = availableWords.filter(word => !isDueForReview(word.id));
+                // Take about half of the words from due words
+                const dueWordsCount = Math.min(Math.ceil(TEST_PAIR_COUNT / 2), dueWords.length);
+                const selectedDueWords = prioritizedDueWords.slice(0, dueWordsCount);
+                
+                // Get non-due words that weren't recently shown
+                const nonDueWords = remainingWords.filter(word => !isDueForReview(word.id));
                 const shuffledNonDueWords = shuffleArray([...nonDueWords]);
                 
-                // Fill with due words first
-                testWords = [...prioritizedDueWords];
+                // Add random non-due words to complete the set
+                const remainingCount = TEST_PAIR_COUNT - selectedDueWords.length;
+                const selectedNonDueWords = shuffledNonDueWords.slice(0, remainingCount);
                 
-                // Then add random non-due words until we reach TEST_PAIR_COUNT
-                const remainingCount = TEST_PAIR_COUNT - testWords.length;
-                if (remainingCount > 0 && shuffledNonDueWords.length > 0) {
-                    testWords = [...testWords, ...shuffledNonDueWords.slice(0, remainingCount)];
-                }
-                
-                // If we still don't have enough, just use random words
-                if (testWords.length < TEST_PAIR_COUNT) {
-                    const shuffledAllWords = shuffleArray([...availableWords]);
-                    testWords = shuffledAllWords.slice(0, TEST_PAIR_COUNT);
-                }
+                // Combine and shuffle for final words list
+                finalWords = shuffleArray([...selectedDueWords, ...selectedNonDueWords]);
+            } else {
+                // Not enough due words, just use random words that weren't recently shown
+                const shuffledWords = shuffleArray([...remainingWords]);
+                finalWords = shuffledWords.slice(0, TEST_PAIR_COUNT);
             }
+            
+            // If we still don't have enough words, fallback to completely random selection
+            if (finalWords.length < TEST_PAIR_COUNT) {
+                const shuffledAllWords = shuffleArray([...availableWords]);
+                finalWords = shuffledAllWords.slice(0, TEST_PAIR_COUNT);
+            }
+            
+            // Store the current words as previously shown
+            previouslyShownWords = [...previouslyShownWords, ...finalWords.map(word => word.id)];
+            // Keep only the most recent batch to avoid the list growing too large
+            if (previouslyShownWords.length > TEST_PAIR_COUNT * 3) {
+                previouslyShownWords = previouslyShownWords.slice(previouslyShownWords.length - TEST_PAIR_COUNT * 3);
+            }
+            localStorage.setItem('previouslyShownMatchingWords', JSON.stringify(previouslyShownWords));
+            
+            // Set the test words
+            testWords = finalWords;
             
             // Create the matching game UI
             createMatchingGame(testWords);
