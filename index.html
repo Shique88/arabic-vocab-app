@@ -481,7 +481,7 @@
             </div>
         </div>
     </div>
-
+    
     <!-- Load Firebase configuration -->
     <script src="config.js"></script>
     
@@ -495,7 +495,7 @@
     
     <script>
         // Firebase configuration is loaded from config.js
-        
+
         // Initialize Firebase
         firebase.initializeApp(firebaseConfig);
 
@@ -980,23 +980,36 @@
                 
                 // Get all sheet names
                 const sheetNames = workbook.SheetNames;
+                
+                // Filter sheets to only those containing 'P'
+                const filteredSheetNames = sheetNames.filter(sheetName => sheetName.includes('P'));
+                
                 let allData = [];
                 sheetData = {}; // Reset sheet data
                 
-                // Process each sheet
-                sheetNames.forEach(sheetName => {
+                // Process each filtered sheet
+                filteredSheetNames.forEach(sheetName => {
                     const worksheet = workbook.Sheets[sheetName];
                     
                     // Convert to JSON
                     const jsonData = XLSX.utils.sheet_to_json(worksheet);
                     
+                    // Create display name by removing 'P' and any characters before it
+                    let displayName = sheetName;
+                    if (sheetName.includes('P')) {
+                        const parts = sheetName.split('P');
+                        displayName = parts[1] || sheetName;
+                        // Remove any leading non-alphanumeric characters
+                        displayName = displayName.replace(/^[^a-zA-Z0-9]+/, '');
+                    }
+                    
                     // Store data by sheet name
                     sheetData[sheetName] = jsonData;
                     
-                    // Add sheet name as category if not specified
+                    // Add modified sheet name as category if not specified
                     jsonData.forEach(item => {
                         if (!item.category && !item.Category) {
-                            item.sheetCategory = sheetName;
+                            item.sheetCategory = displayName; // Use the name without 'P'
                         }
                     });
                     
@@ -1009,11 +1022,22 @@
                 statusIndicator.className = 'status-indicator success';
                 dataInfo.textContent = `נטענו ${allData.length} מילים בהצלחה`;
                 
-                // Create a detailed sheet information display
+                // Get display names for the badges (without 'P')
+                const displayNames = filteredSheetNames.map(sheetName => {
+                    if (sheetName.includes('P')) {
+                        const parts = sheetName.split('P');
+                        let displayName = parts[1] || sheetName;
+                        // Remove any leading non-alphanumeric characters
+                        return displayName.replace(/^[^a-zA-Z0-9]+/, '');
+                    }
+                    return sheetName;
+                });
+                
+                // Create a detailed sheet information display with modified names
                 sheetsInfo.innerHTML = `
-                    <div>נטענו נתונים מ-${sheetNames.length} גיליונות:</div>
+                    <div>נטענו נתונים מ-${filteredSheetNames.length} גיליונות:</div>
                     <div class="sheet-list">
-                        ${sheetNames.map(sheet => `<span class="sheet-badge">${sheet}</span>`).join('')}
+                        ${displayNames.map(sheet => `<span class="sheet-badge">${sheet}</span>`).join('')}
                     </div>
                 `;
             } catch (error) {
